@@ -1,0 +1,292 @@
+---
+title: "05 Dynamic Signature-Gene Relationship Analyses"
+author: "Paul Renauer"
+date: "2025-08-14"
+description: "This code analyzes relationships between pathways and genes as
+predictors and responses, respectively. This code also generates all relevant 
+plots."
+output: html_document
+---
+```{r include = FALSE}
+knitr::opts_chunk$set(message = F, eval=F)
+```
+
+### Load libraries and prepare environment
+```{r Setup environment}
+setwd('06_SCT')
+# Common libraries
+library(dplyr)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(ggrepel)
+library(ggrastr)
+library(Matrix)
+library(reticulate)
+library(Seurat)
+library(future)
+# Libraries for signature analyses
+library(AUCell)
+library(fgsea)
+# libraries for network plots
+library(ggraph)
+library(igraph)
+library(ggnetwork)
+# libraries for upset plots
+library(ggdendroplot)
+library(ggvenn)
+library(ggVennDiagram)
+# library for GAMs
+library(mgcv)
+
+
+## Source file with accessory functions
+source('00_Additional_Functions.R')
+
+## Set options
+options(future.globals.maxSize= 10000*1024^2)
+options(matrixStats.useNames.NA = 'deprecated')
+options("ggrastr.default.dpi" = 750)
+
+
+## setup SO
+so <- readRDS('Datasets/so_proc2.rds')
+m <- readRDS('Datasets/aucell_PidSignatures.rds')
+m <- (m@assays@data$AUC[, colnames(so)])
+so$pw <- CreateAssay5Object(count=m, data=m)
+
+```
+
+
+### DSR Analyses
+```{r DSR Analyses}
+
+## Select pws
+de <- read.delim("Data/de_pw_pid_v0.1.txt")
+up <- slice_head(de[which(de$logFC > 0.2 & de$padj < 0.01),],
+                 by='celltype',n=2)$feature %>% unique()
+dn <- slice_head(de[which(de$logFC < -0.2 & de$padj < 0.01),], 
+                 by='celltype',n=2)$feature %>%  unique()
+pws.common.up <- c('PID-ATF2-PATHWAY','PID-CDC42-REG-PATHWAY','PID-HNF3A-PATHWAY',
+            'PID-IL1-PATHWAY','PID-IL23-PATHWAY','PID-IL3-PATHWAY',
+            'PID-NFAT-TFPATHWAY','PID-RB-1PATHWAY','PID-TCR-CALCIUM-PATHWAY',
+            'PID-TCR-JNK-PATHWAY')
+pws.common.dn <- c('PID-CXCR3-PATHWAY','PID-ERBB1-RECEPTOR-PROXIMAL-PATHWAY',
+            'PID-GLYPICAN-1PATHWAY','PID-INTEGRIN-CS-PATHWAY',
+            'PID-LYMPH-ANGIOGENESIS-PATHWAY')
+pws.common <- c(pws.common.up,pws.common.dn) 
+pws.top <- c(up,dn) 
+pws <- c(pws.common, pws.top) %>% unique()
+
+
+
+## Select DE genes
+de <- read.delim('Data/de_genes_v0.1.txt')
+# filter for DE genes
+deg <- de[which(abs(de$logFC) > 0.5 & de$padj < 0.01), 'feature'] %>%
+    unique()
+
+
+## Run DSR with pathways as predictors for gene expression
+r <- data.frame()
+for(x in pws){
+    tmp <- bplapply(deg, function(y){
+        d=setupDsrData(x,y)
+        
+        fit=dsrFitGam(d, select=F)
+        #cat('Model: ',x, ' as a predictor of ', y,'\n')
+        if(is.null(fit)) return(NULL)
+        return(extractDsrResults(fit))
+        
+    }, BPPARAM=MulticoreParam(workers=18, force.GC=F, progressbar=T,RNGseed=1))
+    tmp <- tmp[!is.null(tmp)]
+    tmp <- do.call(rbind, tmp)
+    tmp <- data.frame(predictor=x, response=deg, tmp)
+    gc()
+    cat('\n',x,' ', which(pws==x), '\n')
+    r <- rbind(r, tmp)
+    rm(tmp)
+}
+r <- mutate(r, .by='predictor', 
+            cor_xy_padj=p.adjust(cor_xy_p, n=length(rownames(so$RNA)) ),
+            fit_padj=p.adjust(fit_p, n=length(rownames(so$RNA)) ),
+            geno_padj=p.adjust(geno_p, n=length(rownames(so$RNA)) )
+)
+write.table(r, 'Data/dsr_sig-gene_v0.6.txt', sep='\t', row.names=F, quote=F)
+
+```
+
+
+### Summarize DSR results in a heatmap
+```{r Summarize DSR results in a heatmap}
+
+## Get response log2FC for heatmap
+de <- read.delim('Data/de_genes_v0.1.txt')
+de <- de[which(abs(de$logFC) > 0.5 & de$padj < 0.01 & (de$pct.1 > 0.25) & (de$pct.2 > 0.25)), ]
+de <- reframe(de, .by='feature', lfc=mean(logFC))
+de.mean.lfc <-structure(c('dn','up')[1+as.integer(de$lfc > 0)],
+                        names=de$feature)
+
+
+## Summarize direction of predictors
+pw <- read.delim("Data/de_pw_pid_v0.1.txt")
+pw <- pw[which(abs(pw$logFC) > 0.25 & pw$padj < 0.01), ]
+pw <- reframe(pw, .by='feature', lfc=mean(logFC))
+pw.mean.lfc <-structure(c('dn','up')[1+as.integer(pw$lfc > 0)],
+                        names=pw$feature)
+
+
+## Prep DSR results for plotting
+# Load DSR results
+r <- read.delim('Data/dsr_sig-gene_v0.7.txt')
+# add DE log2FC directions for PW and Genes
+r$dir.resp <- de.mean.lfc[r$response]
+r$dir.pred <- pw.mean.lfc[r$predictor]
+
+
+## Filter DSR results by model quality, relationship strength, 
+##   DE PWs and Genes, and exclude uncharacterized genes
+f <- r[which(r$fit_padj < 0.01 & r$fit_dev > 0.25 & r$fit_r2 > 0.1 & 
+                 abs(r$cor_xy_r2) > 0.25 &
+                 r$predictor %in% unique(pw$feature) &
+                 r$response %in% unique(de$feature) &
+                 !grepl('^ENSG0', r$response)),] 
+## Get all results for the filtered PWs and Genes to make a heatmap
+r <- r[which(r$predictor %in% unique(f$predictor) & 
+                 r$response %in% unique(f$response)),]
+
+## Cast result to a 'response x predictor' table
+d <- reshape2::dcast(r, response~predictor, value.var='cor_xy_r2', fill=0)
+d <- data.frame(d[,-1], row.names=d[,1])
+
+## Create heatmap annotations for gene and pw directions
+anno_gene <- unique(r[,c('response','dir.resp')])
+anno_gene <- data.frame('Gene_dir.'=anno_gene$dir.resp, 
+                        row.names=anno_gene$response)
+anno_pw <- unique(r[,c('predictor','dir.pred')])
+anno_pw <- data.frame('PW_dir.'=anno_pw$dir.pred,
+                      row.names=str_replace_all(anno_pw$predictor,'-', '.'))
+labels_row <- str_remove(colnames(d), 'PID.') %>% 
+    str_replace_all(., '\\.', '-') %>% 
+    str_replace_all(., '-PATHWAY|PATHWAY', ' pathway')
+anno_cols <- list('PW_dir.'=c(dn='#62D7DF', up='#F1988D'),
+                  'Gene_dir.'=c(dn='#62D7DF', up='#F1988D'))
+p <- cowplot::ggdraw() + cowplot::draw_grob(
+    pheatmap::pheatmap(t(d), clustering_method='ward.D2', 
+                       cutree_rows=6, cutree_cols=7, treeheight_col=12, 
+                       treeheight_row=12, annotation_colors=anno_cols,
+                       annotation_col=anno_gene, annotation_row=anno_pw,
+                       labels_row = labels_row, angle_col='90')$gtable
+)
+ggsave(plot=p, 'Figures/hm_dsr_v0.4.pdf', height=2.4, width=5.75,scale=1.4)
+p <- cowplot::ggdraw() + cowplot::draw_grob(
+    pheatmap::pheatmap(d, clustering_method='ward.D2', 
+                       cutree_rows=7, cutree_cols=6, treeheight_col=12, 
+                       treeheight_row=12, annotation_colors=anno_cols,
+                       annotation_row=anno_gene, annotation_col=anno_pw,
+                       labels_col = labels_row, angle_col='90')$gtable
+)
+ggsave(plot=p, 'Figures/hm_dsr_vert_v0.4.pdf', height=4.5, width=3.4,scale=1.4)
+
+```
+
+
+### Make scatter plots of top DSR relationships
+```{r Make scatter plots of top DSR relationships}
+
+## Plot top DSR relationships
+top.dsm <- list(
+                c('PID-ATF2-PATHWAY', 'JUN'),
+                c('PID-IL2-STAT5-PATHWAY', 'LTA'),
+                
+                c('PID-NFAT-TFPATHWAY', 'IFNG'),
+                c('PID-NFAT-TFPATHWAY', 'TNF'),
+                
+                c("PID-IL1-PATHWAY", 'NFKB1'),
+                
+                c('PID-TCR-PATHWAY', 'PID-GLYPICAN-1PATHWAY'),
+                #c('PID-ERBB-NETWORK-PATHWAY','HSP90AA1'),
+                
+                c('PID-GLYPICAN-1PATHWAY','TGFBR2'),
+                c('PID-GLYPICAN-1PATHWAY','TGFB1'),
+                c('PID-GLYPICAN-1PATHWAY','FGR'),
+                
+                c('PID-NFAT-TFPATHWAY', 'TBX21'),
+                c('PID-MYC-ACTIV-PATHWAY', 'GZMB'),
+                c('PID-IL23-PATHWAY', 'NFKB1')
+                
+)
+plist <- lapply(top.dsm, function(x){
+    return(testDsr(x[1], x[2], include_geno=T))
+})
+p <- cowplot::plot_grid(plotlist=plist, align='hv', axis='lbt',ncol=2)
+ggsave(plot=p, 'Figures/dsm_tophits_v0.3.pdf', height=0.75*length(top.dsm), width=3.5*2,scale=2)
+
+```
+
+
+### PCA and dot plots of key pathway genes
+```{r PCA and dot plots of key pathway genes}
+
+## Select pathways
+pws <- c("PID-NFAT-TFPATHWAY","PID-HNF3A-PATHWAY","PID-IL2-STAT5-PATHWAY",
+         "PID-ATF2-PATHWAY", "PID-GLYPICAN-1PATHWAY","PID-IL23-PATHWAY")
+gs <- fgsea::gmtPathways('ref/c2.canonical_pathways.v7.4.symbols.gmt.txt') 
+gs <- gs[grepl('^PID_', names(gs))]
+names(gs) <- str_replace_all(names(gs), '_','-')
+
+## Select genes
+hvg <- VariableFeatures(so$RNA)
+det_rate <- apply(so$RNA$data[hvg,], 1, PercentAbove, threshold=0)
+hvg <- hvg[which(det_rate > 0.2)]
+glist <- lapply(gs[pws], function(x) intersect(hvg,x))
+
+
+## Make cell ID that combines cell type and genotype
+so$id <- paste0(str_split_i(so$ct,'-',1), ':', 
+                str_replace(str_split_i(so$sample,'_',1), 'st','stop'))
+
+## mNK heatdots
+DefaultAssay(so) <- 'RNA'
+so2 <- so
+so <- subset(so2, subset=(nk_type=='mNK'))
+plist.mnk <- lapply(names(glist), function(n) {
+    ptitle <- str_remove(n, 'PID-') %>%
+        str_replace(., '-PATHWAY|PATHWAY',' path.')
+    MakeDotPlot(glist[[n]], title=ptitle, thresh=0.1)
+}) %>% unlist(recursive=F)
+p <- cowplot::plot_grid(plotlist=plist.mnk[seq(1,length(plist.mnk),2)], align='hv',
+                        axis='lbt',ncol=3)#, rel_widths=c(1,0.5,1,0.5))
+ggsave(plot=p, 'Figures/heatdot_signatures_mNK_sizeB_v0.3.pdf', limitsize = F,
+       height=1.2*2, width=7.25, scale=3.5)
+
+
+## iNK heatdots
+so <- subset(so2, subset=(nk_type=='iNK'))
+plist.ink <- lapply(names(glist), function(n) {
+    ptitle <- str_remove(n, 'PID-') %>%
+        str_replace(., '-PATHWAY|PATHWAY',' path.')
+    MakeDotPlot(glist[[n]], title=ptitle, thresh=0.1)
+}) %>% unlist(recursive=F)
+p <- cowplot::plot_grid(plotlist=plist.ink[seq(1,length(plist.ink),2)], align='hv',
+                        axis='lbt',ncol=3)#, rel_widths=c(1,0.5,1,0.5))
+ggsave(plot=p, 'Figures/heatdot_signatures_iNK_sizeA_v0.3.pdf', limitsize = F,
+       height=0.8*2, width=5, scale=3.5)
+ggsave(plot=p, 'Figures/heatdot_signatures_iNK_sizeB_v0.3.pdf', limitsize = F,
+       height=0.8*2, width=7.25, scale=3.5)
+so=so2
+rm(so2)
+
+
+## Make PCA plots
+plist <- append(plist.mnk[seq(2,length(plist.mnk),2)],
+                plist.ink[seq(2,length(plist.ink),2)])
+p <- cowplot::plot_grid(plotlist=plist, align='hv',
+                        axis='lbt',ncol=6)
+ggsave(plot=p, 'Figures/pca_signatures_v0.3.pdf', limitsize = F,
+       height=0.9*2, width=1.05*6, scale=2)
+
+```
+
+
+

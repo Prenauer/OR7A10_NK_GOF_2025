@@ -1,0 +1,151 @@
+---
+title: "01 CRISPRa Screen analysis"
+author: "Paul Renauer"
+date: "2025-08-14"
+description: "This code includes data preprocessing, processing steps and plot
+generation for the CRISPRa screen analysis."
+output: html_document
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(message = F, eval=F)
+```
+
+### Load libraries and prepare environment
+```{r Setup environment}
+
+setwd('2_CRISPRa_screen')
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrastr)
+library(stringr)
+
+## Source samba scripts for version 1.1
+source('Scripts/Samba_official_V1.1.R')
+
+```
+
+
+### Analysis
+```{r Analysis}
+
+## Analysis
+df <- read.delim('count_merge.txt')
+g <- stringr::str_split(df$guide_ID,'\\.', simplify = T)[,1:2]
+g <- paste0(g[,1],'.',g[,2])
+df <- data.frame(sgRNA = df$guide_ID, Gene = g,df[,2:16])
+write.table(df, 'NK_Screen_LY3_CountTable.txt', sep = '\t', row.names = F, quote = F)
+
+Screen <- c(rep(1,12),rep(0,3))
+design <- model.matrix(~ Screen)
+
+dge <- Preprocess_Samba(data = df, design = design)
+sgRes <- Analyze_Samba_Guides(dge = dge, coefficient = 'Screen', file.prefix = 'NK_Screen_LY3')
+geneRes <- Analyze_Samba_Genes(sgRes = sgRes, ntc.as.null.dist = F, score.method = 'GeneScore', file.prefix = 'NK_Screen_LY3')
+write.table(geneRes, 'NK_Screen_LY3_GeneLevelResults.txt', sep = '\t', row.names = F, quote = F)
+
+#####
+##Figures
+#####
+
+## Rank plot
+nullData <- sgRes
+nullData$logFDR <- -log10(nullData$FDR) # need this column, or ggplot will produce an error
+# get fdr.threshold (90th percentile of NTCs)
+fdr.threshold <- data.frame(zscore = quantile(nullData[,'zscore'], .90), logFDR = 0)
+nullData$color <- NA
+nullData[which(nullData$zscore == fdr.threshold),]
+# plot data
+geneRes$logFDR <- -log10(geneRes$qval_pos)
+geneRes <- geneRes[with(geneRes, order(logFDR, decreasing = T)),] 
+geneRes$logFDR[is.na(geneRes$logFDR)] <- 0
+df.label <- head(geneRes, 16)
+df.label$size <- c(rep(2,8), rep(1,8))
+geneRes$zscore <- scale(geneRes$score_pos, center = F)
+geneRes$Label <- stringr::str_split(geneRes$Gene,'\\.', simplify = T)[,1]
+p <- ggplot(geneRes, aes(x=zscore, y=logFDR)) + 
+    ggrastr::rasterize(ggpointdensity::geom_pointdensity(size = 1), dpi = 300) + 
+    viridis::scale_color_viridis() + ylim(-.4,10) +
+    geom_rug(data = nullData, aes(x = zscore), alpha = 0.3, sides = 'b', color = 'gray10', outside = F) +
+    geom_rug(data = fdr.threshold, aes(x = zscore), sides = 'b', color = 'firebrick', outside = F) +
+    geom_segment(x = min(geneRes$zscore, na.rm = T), xend = 5, y = 2, yend = 2, color = 'black', alpha = 0.5, linetype = 'longdash') +
+    ggrepel::geom_text_repel(data = df.label, aes(label = Label, size = size), segment.alpha = .8, segment.size = 0.2,
+                              min.segment.length = 0, max.overlaps = 30, fontface = 'italic') +
+    scale_size_area(range(c(2,3)), guide='none') + 
+    labs(x = 'Gene score', y = 'Adj. p value (-log10)', title = '') + 
+    cowplot::theme_cowplot()
+ggsave(plot = p, filename = 'NK_Screen_LY_volcano_v2.pdf', height = 3.75, width = 5)
+
+
+## plot MDS
+hvg <- edgeR::cpm(dge, log = T)[order(fit$dispersion,decreasing = T) %>% head(1000),] %>% scale(center = T) %>% data.frame()
+mds <- limma::plotMDS(hvg, gene.selection = 'pairwise')
+axis.labels <- paste0(c('Dim 1 (', 'Dim 2 ('),round(mds$var.explained[1:2] * 100, 1), c('% variance)', '% variance)'))
+mds <- data.frame(Dim1 = mds$x, Dim2 = mds$y, row.names = colnames(hvg))
+set.seed(42)
+km.res <- kmeans(mds, 4, nstart = 25)
+p <- factoextra::fviz_cluster(km.res, data = mds, shape = 19, xlab = axis.labels[1], repel = T, ylab = axis.labels[2],
+                   palette = c("#00AFBB", "#E7B800", "#FC4E07",'gray50'),
+                   ggtheme = theme_test(), show.clust.cent=F, xlim = c(-2,2), ylim = c(-2,2),
+                   main = 'Unadjusted MDS')
+ggsave(plot = p, filename = 'MDS_NK_Screen.pdf', width = 4, height = 3.5)
+mds$Cluster <- km.res$cluster
+mds <- data.frame(Sample=rownames(mds), mds)
+write.table(mds, 'NK_Screen_LY3_mds_plotdata.txt', sep = '\t', row.names = F, quote = F)
+
+
+## Correlation heatmap
+corr <- cor(hvg, method = 's')
+write.table(corr, 'NK_Screen_LY3_correlation_plotdata.txt', sep = '\t', row.names = T, quote = F)
+pheatmap::pheatmap(corr, scale = 'none', treeheight_row = 12, cluster_cols = T, 
+                   treeheight_col = 12,  clustering_method = 'ward.D2', 
+                   angle_col = 90, width = 4, height = 3.6,
+                   filename = paste0('heatmap_corr_spearman.pdf'))
+
+
+## log-norm count scatterplot
+lcpm <- apply(dge$counts, 2, function(x) 1e6*x/sum(x))
+lcpm <- log2(1+lcpm)
+g <- stringr::str_split(rownames(lcpm),'\\.', simplify = T)[,1:2]
+g <- paste0(g[,1],'.',g[,2])
+write.table(data.frame(sgRNA = rownames(lcpm), Gene = g, lcpm), 'NK_Screen_LY3_lcpm.txt', sep = '\t', row.names = F, quote = F)
+d <- data.frame(Tumor = rowMeans(lcpm[,grep('tumor', colnames(lcpm))]),
+                Cell = rowMeans(lcpm[,grep('cell', colnames(lcpm))]))
+d <- d[with(d, order(Tumor, decreasing = T)),]
+d$label <- stringr::str_split(rownames(d), '\\.', simplify = T)[,1]
+x = mgcv::gam(y ~ s(x, bs = "cs"), data = data.frame(y = d$Tumor, x = d$Cell))
+x <- x$residuals
+d.label <- rbind(d[order(x,decreasing = T) %>% head(30),], d[order(x,decreasing = T) %>% tail(6),])
+p <- ggplot(d, aes(x= Cell, y=Tumor)) +
+    rasterize(ggpointdensity::geom_pointdensity(size = 0.8, adjust =  1, show.legend = F)) + 
+    ggrepel::geom_text_repel(data = d.label, aes(label = label), size = 3, alpha = .7, segment.alpha = 0.3, segment.size = 0.2, 
+                             max.iter = 100000, min.segment.length = 0, max.overlaps = 30, fontface = 'italic') +
+    viridis::scale_color_viridis() + geom_smooth(method='gam')  +
+    labs(x = 'Cell counts (log-norm)', y = 'Tumor counts (log-norm)', title = 'gRNA comparison') +
+    theme_test() 
+ggsave(plot = p, filename = 'scatter_meanLogNormCts_overlabeled.pdf', height = 4, width = 4)
+
+
+## Cumulative prob function plots
+lcpm <- log2(1 + apply(dge$counts, 2, function(x) 1e6*x/sum(x)))
+d <- reshape2::melt(lcpm)
+colnames(d) <- c('guide','sample','value')
+d$group <- stringr::str_split(d$sample, '_', simplify = T)[,1] %>% factor()
+d.order <- d %>% dplyr::group_by(sample) %>% dplyr::summarize(across(where(is.numeric), function(x) quantile(x,.75)))
+d.order$group <- stringr::str_split(d.order$sample, '_', simplify = T)[,1]
+d.order <- d.order[with(d.order, order(group,-value, decreasing = F)),]
+d$sample <- factor(d$sample, levels = rev(d.order$sample))
+cdf <- lapply(c('tumor','cell'), function(group) { ecdf(d[which(d$group == group),'value']) }) %>% structure(., names = c('tumor','cell'))
+p1 <- ggplot() + xlim(range(d$value)) +
+    geom_function(aes(color = 'tumor'), fun = cdf[[1]]) +
+    geom_function(aes(color = 'cell'), fun = cdf[[2]]) +
+    labs(y = 'Cumulative probability', x = 'sgRNA counts (log-norm)', title = 'Group ECDF') + cowplot::theme_cowplot()
+cdf <- lapply(unique(d$sample), function(s) { ecdf(d[which(d$sample == s),'value']) }) %>% structure(., names = unique(d$sample))
+p2 <- ggplot() + xlim(range(d$value))
+for(i in 1:12) p2 <- p2 + geom_function(aes(color = 'tumor'), fun = cdf[[i]]) 
+for(i in 13:15) p2 <- p2 + geom_function(aes(color = 'cell'), fun = cdf[[i]])
+p2 <- p2 + labs(y = 'Cumulative probability', x = 'sgRNA counts (log-norm)', title = 'Sample ECDF') + cowplot::theme_cowplot()
+ggsave(plot = p2 | p1, filename = 'cdf_screen-samples_v1.pdf', height = 3.5, width = 7)
+
+```

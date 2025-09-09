@@ -1,0 +1,143 @@
+---
+title: "03 DE Gene Analyses"
+author: "Paul Renauer"
+date: "2025-08-14"
+description: "This code performs differential expression analyses of genes
+and generates plots."
+output: html_document
+---
+    
+    ```{r include = FALSE}
+knitr::opts_chunk$set(message = F, eval=F)
+```
+
+### Load libraries and prepare environment
+```{r Setup environment}
+
+setwd('06_SCT')
+# Common libraries
+library(dplyr)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(ggrepel)
+library(ggrastr)
+library(Matrix)
+library(reticulate)
+library(Seurat)
+library(future)
+# libraries for upset plots
+library(ggdendroplot)
+library(ggvenn)
+library(ggVennDiagram)
+
+## Source file with accessory functions
+source('00_Additional_Functions.R')
+
+## Set options
+options(future.globals.maxSize= 10000*1024^2)
+options(matrixStats.useNames.NA = 'deprecated')
+options("ggrastr.default.dpi" = 750)
+
+## Load SO
+so <- readRDS('Datasets/so_proc2.rds')
+
+```
+
+
+### DE analysis of genes
+```{r DE analysis of genes}
+
+## Select genes for DE (not histone, ribosomal, uncharacterized genes)
+genes2use <- grep('^HIST|^AC([0-9])|^AL([0-9])|^AP([0-9])|^AF([0-9])|^CU([0-9])|^RPL([0-9])|^RPS([0-9])|^LINC|orf', rownames(so), invert=T, value=T)
+
+
+## Run DE for each cell subset
+groups <- sort(unique(so$ct))
+de <- do.call(rbind, lapply(groups, function(celltype){
+    de <- FindMarkers(subset(so, subset=(ct==celltype)), group.by='sample',
+                      logfc.threshold=0, densify=T, features=genes2use, 
+                      ident.1='OR7A10_Tumor', ident.2='OR7A10st_Tumor')
+    colnames(de) <- c('pval','logFC','pct.1','pct.2', 'padj')
+    de <- data.frame(celltype=celltype, feature=rownames(de), 
+                     comp='OR7A10_Tumor-OR7A10st_Tumor', 
+                     group1='OR7A10_Tumor', group2='OR7A10st_Tumor', de)
+    de <- de[with(de, order(-log10(pval), abs(logFC), decreasing=T)),]
+    return(de)
+}))
+write.table(de, 'Data/de_genes_v0.1.txt', sep='\t', quote=F, row.names=F)
+
+```
+
+### Make volcano plots
+```{r Make volcano plots}
+
+## Volcano plots
+de <- read.delim('Data/de_genes_v0.1.txt')
+plist <- lapply(groups, function(celltype){
+    plotVolcano(de[which(de$celltype==celltype),], 
+                pt.size=0.8, rastr=T, lfc.thresh=1.5, title=celltype)
+})
+p <- cowplot::plot_grid(plotlist=plist, align='hv',axis='lbt',ncol=4, byrow=F)
+ggsave(plot=p, 'Figures/vol_de_genes_v0.2.pdf', height=2.5*2, width=2.5*4)
+
+```
+
+
+### Make upset plots
+```{r Make upset plots}
+
+## Pprep data
+de <- read.delim("Data/de_genes_v0.1.txt")
+comps <- unique(de$comp)
+de$dir <- c('up','dn')[1+as.integer(de$logFC < 0)]
+de <- de[which(de$padj < 0.01 & abs(de$logFC) > 1.5),]
+de$id <- paste0(de$dir, ':', de$celltype)
+g <- unique(de$feature)
+d <- do.call(cbind, lapply(unique(de$id), function(id){
+    g %in% de$feature[which(de$id==id)]
+}))
+colnames(d) <- unique(de$id)
+d <- ggvenn::data_frame_to_list(data.frame(d))
+names(d) <- str_replace(names(d), 'up.', 'UP:') %>% 
+    str_replace(., 'dn.', 'DN:') %>% 
+    str_split_i(., '\\.', 1)
+
+
+## Upset plots
+cols <- structure(ggcolor(8), names=str_split_i(sort(unique(so$ct)),'-',1))
+plist <- lapply(c('UP','DN'), function(direction){
+    ## make venn object
+    v <- Venn(d[grep(direction,names(d))])
+    n.intersects <- sum(process_region_data(v)$count > 0)
+    pr <- process_region_data(v)
+    pr <- pr[which(pr$count > 0),]
+    pr <- pr[order(-pr$count, pr$id),]
+    pr <- pr[which(nchar(pr$id)>5),]
+    glist <- lapply(pr$item, function(i) g[i]) %>% structure(., names=pr$id)
+
+
+    bar.col <- cols[str_split_i(v@names,':',2)]
+    ## Make upset plots
+    p <- plot_upset(v, nintersects=n.intersects, sets.bar.color=bar.col, 
+                    order.set.by='name', relative_height=0.25,
+                    sets.bar.x.label='# DE Genes') 
+    p <- cowplot::ggdraw() + cowplot::draw_grob(aplot::gglistGrob(p))
+    
+    return(p)
+})
+p <- cowplot::plot_grid(plotlist=plist, align='hv',
+                        axis='lbt',ncol=1, rel_widths=c(0.4,1))
+ggsave(plot=p, 'Figures/upset_de_genes.pdf', height=2*2, width=1*5, scale=2.2)
+
+
+```
+
+
+
+
+
+
+
+
+

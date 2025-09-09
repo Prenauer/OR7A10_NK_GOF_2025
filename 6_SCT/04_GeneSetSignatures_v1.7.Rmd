@@ -1,0 +1,275 @@
+---
+title: "04 Pathway Analyses"
+author: "Paul Renauer"
+date: "2025-08-14"
+description: "This code performs generates (1) single-cell signatures of 
+PID pathways, (2) runs differential pathway analyses of hallmark
+signatures, (3) generates single-cell signatures of select phenotypes, and
+(4) generates plots for all of these analyses."
+output: html_document
+---
+```{r include = FALSE}
+knitr::opts_chunk$set(message = F, eval=F)
+```
+
+### Load libraries and prepare environment
+```{r Setup environment}
+
+setwd('06_SCT')
+# Common libraries
+library(dplyr)
+library(stringr)
+library(data.table)
+library(ggplot2)
+library(ggrepel)
+library(ggrastr)
+library(Matrix)
+library(reticulate)
+library(Seurat)
+library(future)
+# Libraries for signature analyses
+library(AUCell)
+library(fgsea)
+# libraries for network plots
+library(ggraph)
+library(igraph)
+library(ggnetwork)
+# libraries for upset plots
+library(ggdendroplot)
+library(ggvenn)
+library(ggVennDiagram)
+
+
+## Source file with accessory functions
+source('00_Additional_Functions.R')
+
+## Set options
+options(future.globals.maxSize= 10000*1024^2)
+options(matrixStats.useNames.NA = 'deprecated')
+options("ggrastr.default.dpi" = 750)
+
+so <- readRDS('Datasets/so_proc2.rds')
+
+```
+
+
+### Pathway signature analysis
+```{r Pathway signature analysis}
+
+## Get gene UMI counts
+m <- so$RNA$counts
+## determine ranks
+m2 <- AUCell_buildRankings(
+    exprMat=m,
+    featureType = "genes",
+    splitByBlocks = TRUE,
+    BPPARAM = BiocParallel::MulticoreParam(tasks=100, force.GC=T, progressbar=T),
+    verbose = T)
+## Load pathways and filter for PID set
+gs <- fgsea::gmtPathways('ref/c2.canonical_pathways.v7.4.symbols.gmt.txt') 
+gs <- gs[grepl('^PID_', names(gs))]
+## Calculate AUCell signatures
+m <- AUCell_calcAUC(gs, m2, nCores=20, verbose=T)
+saveRDS(m, 'Datasets/aucell_PidSignatures.rds')
+rm(m2)
+
+## Add signatures to SO
+m <- (m@assays@data$AUC[, colnames(so)])
+so$pw <- CreateAssay5Object(count=m, data=m)
+
+```
+
+
+### Differential signature analysis (pathways)
+```{r Differential signature analysis (pathways)}
+
+## Identify DKO-specific variable genes
+groups <- sort(unique(so$ct))
+gp1 <- 'OR7A10_Tumor'
+gp2 <- 'OR7A10st_Tumor'
+DefaultAssay(so) <- 'pw'
+pw <- do.call(rbind, lapply(groups, function(celltype){
+    de <- FindMarkers(subset(so, subset=(ct==celltype)), group.by='sample',
+                      logfc.threshold=0, densify=T,
+                      features=rownames(so), ident.1=gp1, ident.2=gp2)
+    colnames(de) <- c('pval','logFC','pct.1','pct.2', 'padj')
+    de <- data.frame(celltype=celltype, feature=rownames(de), 
+                     comp=paste0(gp1,'-',gp2), group1=gp1, group2=gp2, de)
+    de <- de[with(de, order(-log10(pval), abs(logFC), decreasing=T)),]
+    return(de)
+}))
+# Add gene-set lengths to result table
+pw <- pw[with(pw, order(celltype, pval)),]
+gs.length <- lapply(gs, function(x) length(intersect(rownames(so$RNA),x))) %>% 
+    unlist()
+names(gs.length) <- str_replace_all(names(gs.length), '_', '-')
+pw$set_size <- gs.length[pw$feature]
+# Save table
+write.table(pw, 'Data/de_pw_pid_v0.1.txt', sep='\t', quote=F, row.names=F)
+
+```
+
+### Pathway volcano plots 
+```{r Pathway volcano plots }
+
+## Load DE pathway results
+de <- read.delim('Data/de_pw_pid_v0.1.txt')
+## Fix pathway labels
+de$feature <- str_remove_all(de$feature, 'PID-|PATHWAY|-PATHWAY')
+de$group <- de$celltype # need the group column for the volcano plot function
+
+plist <- lapply(sort(unique(de$celltype)), function(celltype){
+        plot.title <- celltype
+        cat(plot.title,'\n')
+        plotVolcano(de[which(de$celltype==celltype),], 
+                    text.size=2, xlim.expansion=3,
+                    pt.size=1, rastr=T, lfc.thresh=0.2, title=plot.title)
+    })
+
+p <- cowplot::plot_grid(plotlist=plist, align='hv',
+                        axis='lbt',ncol=4)
+ggsave(plot=p, 'Figures/vol_de_pw_0.3.pdf', height=1.25*2, width=1.25*4, scale=2)
+
+```
+
+
+### Pathway upset plots 
+```{r Pathway upset plots}
+
+## Upset plots
+de <- read.delim("Data/de_pw_pid_v0.1.txt")
+comps <- unique(de$comp)
+de$dir <- c('up','dn')[1+as.integer(de$logFC < 0)]
+de <- de[which(de$padj < 0.01 & abs(de$logFC) > 0.2),]
+de$id <- paste0(de$dir, ':', de$celltype)
+g <- unique(de$feature)
+d <- do.call(cbind, lapply(unique(de$id), function(id){
+    g %in% de$feature[which(de$id==id)]
+}))
+colnames(d) <- unique(de$id)
+d <- ggvenn::data_frame_to_list(data.frame(d))
+names(d) <- str_replace(names(d), 'up.', 'UP:') %>% 
+    str_replace(., 'dn.', 'DN:') %>% 
+    str_split_i(., '\\.', 1)
+
+
+## Upset plots
+cols <- structure(ggcolor(8), names=str_split_i(sort(unique(so$ct)),'-',1))
+plist <- lapply(c('UP','DN'), function(direction){
+    ## make venn object
+    v <- Venn(d[grep(direction,names(d))])
+    n.intersects <- sum(process_region_data(v)$count > 0)
+    pr <- process_region_data(v)
+    pr <- pr[which(pr$count > 0),]
+    pr <- pr[order(-pr$count, pr$id),]
+    pr <- pr[which(nchar(pr$id)>5),]
+    glist <- lapply(pr$item, function(i) g[i]) %>% structure(., names=pr$id)
+    print(glist)
+    
+    bar.col <- cols[str_split_i(v@names,':',2)]
+    ## Make upset plots
+    p <- plot_upset(v, nintersects=n.intersects,sets.bar.color=bar.col, order.set.by='name',
+                    relative_height=2,sets.bar.x.label='# DE Pathways') 
+    p <- cowplot::ggdraw() + cowplot::draw_grob(aplot::gglistGrob(p))
+    
+    return(p)
+})
+p <- cowplot::plot_grid(plotlist=plist, align='hv',
+                        axis='lbt',ncol=1, rel_widths=c(0.4,1))
+ggsave(plot=p, 'Figures/upset_de_pathways_0.3.pdf',
+       height=2*2, width=1*5, scale=2.2)
+
+```
+
+
+### Pathway network analyses
+```{r Pathway network analyses}
+
+## Load DE pathway results
+de <- read.delim("Data/de_pw_pid_v0.1.txt")
+de <- de[with(de, order(celltype, -abs(logFC))),]
+
+## Make plots
+de$group <- paste0(de$celltype,': ',de$group1,'-',de$group2)
+de$ct <- de$celltype
+de$pathway <- str_replace_all(de$feature,'-','_')
+de$NES <- de$logFC
+up <- de[which(de$logFC > 0 & de$padj < 0.01),]
+dn <- de[which(de$logFC < 0 & de$padj < 0.01),]
+p <- cowplot::plot_grid(RunNetPW(up, 'Upreg. pathways',2, 1), 
+                        RunNetPW(dn, 'Downreg. pathways',2, 1),
+                        align='hv', axis='lbt',ncol=2, rel_widths=c(1,1))
+ggsave(plot=p, paste0('Figures/net_pw_pid_v0.3.pdf'), 
+       height=3*1, width=5.5*2, scale=1.5)
+
+```
+
+
+### Phenotype signatures
+```{r Phenotype signatures}
+
+## Select pathways and genes for violin plots
+pw2plot <- c('PID-TCR-JNK-PATHWAY','PID-NFAT-TFPATHWAY',
+             'PID-IL2-STAT5-PATHWAY','PID-GLYPICAN-1PATHWAY','PID-IL1-PATHWAY')
+genes2plot <- c('GZMB','IFNG','LTA','BCL2','BCL2L1','BAX')
+cols <- structure(c('#B2B2B2','#E9AC4C'),
+                  names=rev(unique(so$sample)))
+
+## Visualize phenotype signature differences
+## violin of signaling signatures
+so$ct <- factor(so$ct, levels=rev(sort(unique(so$ct))))
+labs.ct <- structure(str_split_i(rev(sort(unique(so$ct))), '-',1), 
+                     names=rev(levels(so$ct)))
+labs.pw <- structure(str_remove(pw2plot,'PID-'), 
+                     names=pw2plot)
+DefaultAssay(so) <- 'pw'
+p1 <- VlnPlot(so, pw2plot, group.by='ct',pt.size=0, 
+              stack=T, fill.by='ident', adjust=0.6,split.by='sample',
+              same.y.lims=F, flip=F) + 
+    geom_vline(xintercept=0.1, linetype='dashed',linewidth=0.1) +
+    scale_fill_manual(values=cols) +
+    scale_y_discrete(labels=labs.ct) + 
+    labs(x='Pathway signature', y=NULL) + 
+    theme(legend.position='none', legend.title=element_text(size=10),
+    )
+DefaultAssay(so) <- 'RNA'
+p2 <- VlnPlot(so, genes2plot,group.by='ct', pt.size=0, 
+              stack=T, fill.by='ident', adjust=0.6,split.by='sample', 
+              same.y.lims=F, flip=F) + 
+    geom_vline(xintercept=0.1, linetype='dashed',linewidth=0.1) +
+    scale_fill_manual(values=cols) +
+    scale_y_discrete(labels=labs.ct) +
+    labs(x='Gene expr.', y=NULL) + 
+    theme(legend.position='none', axis.text.x.top=element_text(angle='90'))
+p <- cowplot::plot_grid(p1, p2, align='hv', axis='lbt',ncol=2, rel_widths=c(0.75,1))
+ggsave(plot=p, 'Figures/topPW_Vln_Signaling_v1.4.pdf', height=3.5, width=2.7*2,scale=1.5)
+
+
+## Get stats for comparing signatures
+de <- read.delim("Data/de_pw_pid_v0.1.txt")
+de <- de[which(de$feature %in% pw2plot),]
+de$feature <- factor(de$feature, levels=pw2plot)
+de <- de[with(de, order(feature, celltype)),c(1,2,7,10)]
+de$sig <- sapply(de$padj, function(x) {
+    case_when(x < 1e-4 ~ '****',
+              x < 1e-3 ~ '***',
+              x < 1e-2 ~ '**',
+              x < 0.05 ~ '*',
+              x >= 0.05 ~ 'ns')
+})
+
+## Get stats for comparing genes
+de <- read.delim("Data/de_genes_v0.1.txt")
+de <- de[which(de$feature %in% genes2plot),]
+de$feature <- factor(de$feature, levels=genes2plot)
+de <- de[with(de, order(feature, celltype)),c(1,2,7,10)]
+de$sig <- sapply(de$padj, function(x) {
+    case_when(x < 1e-4 ~ '****',
+              x < 1e-3 ~ '***',
+              x < 1e-2 ~ '**',
+              x < 0.05 ~ '*',
+              x >= 0.05 ~ 'ns')
+})
+
+```
+

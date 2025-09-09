@@ -1,0 +1,63 @@
+---
+title: "01 Preprocessing ORF Mini-screen"
+author: "Paul Renauer"
+date: "2025-08-14"
+description: "This code includes data preprocessing steps for the ORF 
+mini-screen."
+output: html_document
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(message = F, eval=F)
+```
+
+### Load libraries and prepare environment
+```{r Setup environment}
+
+setwd('3_ORF_Miniscreen')
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrastr)
+library(stringr)
+
+## Source samba scripts for version 1.1
+source('Scripts/Samba_official_V1.1.R')
+
+```
+
+
+### Preprocessing
+```{r Preprocessing}
+## Sample id conversion 
+map.id <- read.delim('Data/SampleBarcode_Map.txt')
+map.id[,2] <- paste0(substr(map.id[,2], 0,10),'0',substr(map.id[,2], 11,100))
+map.id <- structure(map.id[,1],
+                    names=paste0('Sample_',map.id[,2], '_readalign2.txt'))
+
+## Reorganize count files into matrix
+filenames <- list.files('RawCounts/umi')
+filenames <- intersect(names(map.id), filenames)
+d <- do.call(rbind, BiocParallel::bplapply(filenames, function(filename){
+    sample_id <- map.id[filename]
+    ct <- read.delim(file.path('RawCounts/umi', filename), header=F, strip.white=T)
+    ct[,1] <- str_split_i(ct[,1], '\\.', 1)
+    ct[,2] <- paste0(ct[,1],'_',ct[,2])
+    ct <- reframe(ct, .by='V2', V3=sum(V3))
+    ct <- data.frame(id=sample_id, 
+                     sgRNA=ct$V2,
+                     ct=as.integer(ct$V3), row.names=NULL)
+    return(ct)
+}, BPPARAM=BiocParallel::MulticoreParam(workers=4, progressbar=T)))
+
+
+## Cast dataframe into table format
+d <- reshape2::dcast(d, sgRNA~id, value.var = 'ct', fill=0)
+d <- data.frame(sgRNA=d$sgRNA, Gene=str_split_i(d$sgRNA,'_',1), d[,-1])
+write.table(d, 'Data/data_counts_v0.2.txt', sep='\t', 
+            quote=F, row.names=F)
+
+```
+
+
+

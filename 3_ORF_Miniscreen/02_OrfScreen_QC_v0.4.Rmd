@@ -1,0 +1,143 @@
+---
+title: "02 QC For ORF Mini-screen"
+author: "Paul Renauer"
+date: "2025-08-14"
+description: "This code includes QC analyses and plots for the ORF 
+mini-screen."
+output: html_document
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(message = F, eval=F)
+```
+
+### Load libraries and prepare environment
+```{r Setup environment}
+
+setwd('3_ORF_Miniscreen')
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggrastr)
+library(stringr)
+
+## Source samba scripts for version 1.1
+source('Scripts/Samba_official_V1.1.R')
+
+```
+
+
+### PCA to assess between-sample variance
+```{r PCA to assess between-sample variance}
+
+## PCA to assess between-sample variance
+d <- read.delim('Data/data_counts_v0.2.txt')
+d2 <- DESeq2::varianceStabilizingTransformation(as.matrix(d[,3:ncol(d)]), fitType='local')
+pca <- prcomp(t(d2), scale=T)
+pca <- data.frame(pca$x[,1:2], id=rownames(pca$x),
+                  donor=str_split_i(rownames(pca$x),'_',2),
+                time=str_split_i(rownames(pca$x),'_',3))
+cols <- c('#B2B2B2','#E9AC4C','#496AB4','#D85446') %>% rev()
+p1 <- ggplot(pca, aes(x=PC1, y=PC2, fill=donor), color='gray20') + 
+    geom_point(size=2.5, shape=21, stroke=0.01) + theme_classic() +
+    xlim(1.3*range(pca$PC1)) + theme(legend.position='bottom') + 
+    scale_fill_manual(values=cols) + scale_color_manual(values=cols) +
+    ggrepel::geom_text_repel(aes(label=id, color=donor), size=2.5, 
+                             max.overlaps=100,
+                             min.segment.length=0, segment.size=0.2)
+p2 <- ggplot(pca, aes(x=PC1, y=PC2, fill=time), color='gray20') + 
+    geom_point(size=2.5, shape=21, stroke=0.01) + theme_classic() +
+    xlim(1.3*range(pca$PC1)) + theme(legend.position='bottom') +
+    scale_fill_manual(values=cols) + scale_color_manual(values=cols) +
+    ggrepel::geom_text_repel(aes(label=id, color=time), size=2.5, 
+                             max.overlaps=100,
+                             min.segment.length=0, segment.size=0.2)
+p <- cowplot::plot_grid(p1, p2, align='hv', axis='lbt', nrow=1)
+ggsave(plot=p, 'Figures/qc_pca_samples.pdf', height=2.5, width=5, scale=1.25)
+write.table(pca, 'Data/data_pca_v0.2.txt', sep='\t', 
+            quote=F, row.names=F)
+
+```
+
+
+### Correlation heatmap
+```{r Correlation heatmap}
+
+## Correlation heatmap
+d <- read.delim('Data/data_counts_v0.2.txt')
+d2 <- log2(1+apply(d[,3:ncol(d)], 2, function(x) 1e6*x/sum(x)))
+corr <- cor(d2, method = 's')
+write.table(corr, 'Data/qc_spearmanCorrelation.pdf', sep = '\t', row.names = T, quote = F)
+anno_row <- data.frame(Time=as.integer(substr(str_split_i(colnames(corr), '_',3), 2,2)), 
+                       row.names=colnames(corr))
+pheatmap::pheatmap(corr, scale = 'none', treeheight_row = 12, cluster_cols = T, 
+                   treeheight_col = 12,  clustering_method = 'ward.D2', 
+                   cutree_cols=3, cutree_rows=3,
+                   annotation_row=anno_row, annotation_col=anno_row,
+                   angle_col = 90, width = 5.75, height = 5,
+                   filename = 'Figures/qc_heatmap_spearmanCorrelation.pdf')
+
+```
+
+
+### Box-Whisker of sample read-count distributions
+```{r Box-Whisker of sample read-count distributions}
+
+## Box-Whisker of sample read-count distributions
+d <- read.delim('Data/data_counts_v0.2.txt')
+d2 <- log2(1+apply(d[,3:ncol(d)], 2, function(x) 1e6*x/sum(x)))
+d2 <- reshape2::melt(d2)
+colnames(d2) <- c('gene','sample','value')
+d2$time <- str_split_i(as.character(d2$sample), '_',3) 
+d2$time[grepl('ctrl',as.character(d2$sample))] <- 'ctrl'
+d2$time <- factor(d2$time, levels=c('ctrl','t0','t3','t6'))
+d2$type <- str_split_i(as.character(d2$sample), '_',1) %>% factor()
+
+o <- unique(d2$sample[with(d2, order(time,type,-value))])
+d2$sample <- factor(d2$sample, levels=o)
+cols <- c('#B2B2B2','#E9AC4C','#496AB4')
+
+p <- ggplot(d2, aes(x = sample, y = value, color = time, fill=time)) + 
+    ggrastr::geom_jitter_rast(size = 0.1, pch = 19, alpha= 0.3) + 
+    scale_color_manual(values=c('#B2B2B2',"#FCF171F1","#F48841FF","firebrick"))+
+    scale_fill_manual(values=c('#B2B2B2',"#FCF171F1","#F48841FF","firebrick"))+
+    geom_boxplot(color = 'gray20',outlier.size = 0.2,outlier.alpha= 0.7)  +
+    coord_flip() + labs(x = '', y = 'UMI counts (log-norm)', title = 'Library distribution') + 
+    cowplot::theme_cowplot()
+ggsave(plot = p, filename = file.path(paste0('Figures/qc_umi-distrib.pdf')), height = 3.75, width = 3.75, scale=1.5)
+p <- ggplot(d2, aes(x = sample, y = value, color = time, fill=time)) + 
+    ggrastr::geom_jitter_rast(size = 0.1, pch = 19, alpha= 0.3) + 
+    scale_color_manual(values=c('#B2B2B2',"#FCF171F1","#F48841FF","firebrick"))+
+    scale_fill_manual(values=c('#B2B2B2',"#FCF171F1","#F48841FF","firebrick"))+
+    geom_boxplot(color = 'gray20',outlier.size = 0.2,outlier.alpha= 0.7)  +
+    labs(x = '', y = 'UMI counts (log-norm)', title = 'Library distribution') + 
+    cowplot::theme_cowplot() + 
+    theme(axis.text.x = element_text(angle=90))
+ggsave(plot = p, filename = file.path(paste0('Figures/qc_umi-distrib_horiz.pdf')), height = 3.75, width = 3.75, scale=1.5)
+
+```
+
+
+### Cumulative prob functions for all groups
+```{r Cumulative prob functions for all groups}
+
+## Cumulative prob functions for all groups
+library(patchwork)
+cols <- structure(c('#B2B2B2',"#FCF171F1","#F48841FF","firebrick"), names=c('ctrl','t0','t3','t6'))
+cdf <- lapply(c('ctrl','t0','t3','t6'), function(group) { 
+    ecdf(d2[which(d2$time == group),'value']) 
+}) %>% structure(., names = c('ctrl','t0','t3','t6'))
+p <- ggplot() + xlim(range(d2$value)) +
+    geom_function(aes(color = 'ctrl'), fun = cdf[[1]], linewidth=1.2) +
+    geom_function(aes(color = 't0'), fun = cdf[[2]], linewidth=1.2) +
+    geom_function(aes(color = 't3'), fun = cdf[[3]], linewidth=1.2) +
+    geom_function(aes(color = 't6'), fun = cdf[[4]], linewidth=1.2) +
+    scale_color_manual(values=cols) + theme_classic() + 
+    theme(legend.position='inside') +
+    labs(y = 'Cumulative probability', x = 'Gene counts (log-norm)', title = 'Group ECDF') 
+ggsave(plot = p, filename = file.path(paste0('Figures/qc_cdf_samples.pdf')), height = 3.5, width =2.25)
+
+```
+
+
+

@@ -1,0 +1,89 @@
+import os
+import pandas as pd 
+import scvelo as scv
+import scanpy as sc
+import loompy
+import numpy as np
+
+
+
+## Set parameters
+scv.settings.verbosity = 3  
+scv.settings.presenter_view = True  
+scv.set_figure_params('scvelo', color_map='Dark2')  
+
+
+
+## import loom objects
+files=['possorted_genome_bam_U947Q.loom','possorted_genome_bam_QSQ79.loom']
+loompy.combine(files, key="Accession", output_file='sct_or7a10.loom')
+
+
+## Import and setup data
+ldata = sc.read('sct_or7a10.loom', cache=True)
+scv.pp.filter_and_normalize(ldata, log = True)
+
+adata = sc.read('so_proc1.loom')
+adata = scv.utils.merge(adata, ldata)
+adata.obsm['X_umap'] = np.loadtxt('umap_embedding.dat',delimiter='\t',skiprows=1)
+adata.obsm['X_inmf'] = np.loadtxt('nmf_embedding.dat',delimiter='\t',skiprows=1)
+
+
+## Filter and normalize data
+scv.pp.filter_and_normalize(adata, log = False, min_shared_cells= 100)
+
+
+## Calculate dynamics
+scv.pp.neighbors(adata, random_state=100, n_neighbors= 30)
+scv.pp.moments(adata, n_neighbors= 30)
+scv.tl.recover_dynamics(adata, n_jobs = 20)
+
+
+## Compute velocity with dynamical modeling
+#scv.tl.velocity(adata, mode='dynamical', groupby='nk_type', use_latent_time=True, n_jobs = 20)
+scv.tl.velocity(adata, mode='dynamical', groupby='ct', n_jobs = 20)
+scv.tl.velocity_graph(adata, n_jobs = 20)
+scv.tl.velocity_embedding(adata, basis='umap')
+## Calculate speed and coherence of velocity 
+scv.tl.velocity_confidence(adata)
+scv.tl.terminal_states(adata, self_transitions=True) 
+scv.tl.velocity_pseudotime(adata, save_diffmap = True)
+scv.pl.velocity_embedding_stream(adata, basis='umap', color = 'velocity_pseudotime', color_map='gnuplot')
+
+scv.tl.latent_time(adata)
+scv.pl.velocity_embedding_stream(adata, basis='umap', color = 'latent_time', color_map='gnuplot')
+
+
+
+
+## Differential kinetics test
+top_genes = adata.var['fit_likelihood'].sort_values(ascending=False)
+scv.tl.differential_kinetic_test(adata, groupby='sample')
+
+adata.write('scvelo_analysis_v0.2.h5ad')
+adata=sc.read('scvelo_analysis_v0.2.h5ad')
+
+
+## Visualize trajectories
+scv.pl.velocity_embedding_stream(adata, basis='umap', color = 'velocity_pseudotime', color_map='gnuplot', show = False, dpi = 300, figsize = (5, 3.6), save = '04a_stream_Velo_v2.3.png')
+scv.pl.velocity_embedding_stream(adata, basis='umap', color = 'latent_time', color_map='gnuplot', show = False, dpi = 300, figsize = (5, 3.6), save = '04b_stream_LatentTime_v2.3.png')
+scv.pl.velocity_embedding_stream(adata, basis='umap', color = 'velocity_self_transition', color_map='gnuplot', show = False, dpi = 300, figsize = (5, 3.6), save = '04b_stream_velo-self_v2.3.png')
+
+
+## Look at speed and coherence of velocity 
+scv.pl.scatter(adata, color='velocity_length', cmap='coolwarm', perc=[5, 95],show = False, dpi = 300,figsize = (5, 3.6),  save = '04d_velocitySpeed_v2.3.png')
+scv.pl.scatter(adata, color='velocity_confidence', cmap='coolwarm', perc=[5, 95],show = False, dpi = 300,figsize = (5, 3.6),  save = '04d_velocityConfidence_v2.3.png')
+
+
+## Calculate root and end points of trajectory
+scv.pl.scatter(adata, color='root_cells', cmap='coolwarm', perc=[5, 95], show = False, dpi = 300, figsize = (5, 3.6), save = '04c_rootPts_v2.3.png')
+scv.pl.scatter(adata, color='end_points', cmap='coolwarm', perc=[5, 95], show = False, dpi = 300, figsize = (5, 3.6), save = '04c_endPts_v2.3.png')
+
+
+## Rank and export data
+pd.DataFrame(adata.obs).to_csv('04_scvelo_obs_v2.3.txt', sep='\t')
+pd.DataFrame(adata.var).to_csv('04_scvelo_var_v2.3.txt', sep='\t')
+
+
+
+
