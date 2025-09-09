@@ -1,4 +1,4 @@
-
+#!/usr/bin/env Rscript
 
 ## Function integrates genes and cells from two different matrices into one.
 combineMatrices <- function(m1, m2, suffix='-1'){
