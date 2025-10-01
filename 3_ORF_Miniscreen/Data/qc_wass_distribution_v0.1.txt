@@ -1,0 +1,7 @@
+Group1	Group2	Statistic	pval	method	padj
+ctrl	t0	12.0497156761927	1e-04	Monte-Carlo two-sample Wasserstein test	6e-04
+ctrl	t3	17.0687500026634	1e-04	Monte-Carlo two-sample Wasserstein test	6e-04
+ctrl	t6	17.6049361209545	1e-04	Monte-Carlo two-sample Wasserstein test	6e-04
+t0	t3	17.0687154546245	1e-04	Monte-Carlo two-sample Wasserstein test	6e-04
+t0	t6	17.6049006908502	1e-04	Monte-Carlo two-sample Wasserstein test	6e-04
+t3	t6	17.5904812335652	0.0106	Monte-Carlo two-sample Wasserstein test	0.0106

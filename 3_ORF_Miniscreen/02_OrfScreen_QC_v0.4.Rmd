@@ -22,7 +22,7 @@ library(ggrastr)
 library(stringr)
 
 ## Source samba scripts for version 1.1
-source('Scripts/Samba_official_V1.1.R')
+source('Samba_official_V1.1.R')
 
 ```
 
@@ -136,6 +136,45 @@ p <- ggplot() + xlim(range(d2$value)) +
     theme(legend.position='inside') +
     labs(y = 'Cumulative probability', x = 'Gene counts (log-norm)', title = 'Group ECDF') 
 ggsave(plot = p, filename = file.path(paste0('Figures/qc_cdf_samples.pdf')), height = 3.5, width =2.25)
+
+
+## KS test for differences in library distribution 
+
+ks <- do.call(rbind, lapply(1:3, function(i) { 
+    do.call(rbind, lapply((i+1):4, function(j) { 
+        t1=levels(d2$time)[i]
+        t2=levels(d2$time)[j]
+         r <- ks.test(x=d2$value[which(d2$time == t1)], 
+                 y=d2$value[which(d2$time == t2)],
+                alternative='t', simulate.p.value=T, B=1000)
+         data.frame(Group1=t1, Group2=t2, KS_Statistic=r$statistic, 
+                    pval=r$p.value, method=paste(r$alternative,r$method))
+        }))
+    }))
+ks <- ks[which(ks$Group1 != ks$Group2),]
+ks$padj <- p.adjust(ks$pval)
+write.table(ks, 'Data/qc_ks_distribution_v0.1.txt', sep='\t', 
+            quote=F, row.names=F)
+
+
+library(twosamples)
+ws <- do.call(rbind, lapply(1:3, function(i) { 
+    do.call(rbind, lapply((i+1):4, function(j) { 
+        t1=levels(d2$time)[i]
+        t2=levels(d2$time)[j]
+        set.seed(1)
+        r <- wass_test(a=d2$value[which(d2$time == t1)], 
+              b=d2$value[which(d2$time == t2)], nboots = 2000, p=1e-6)
+         data.frame(Group1=t1, Group2=t2, Statistic=r[1], 
+                    pval=r[2], method='Monte-Carlo two-sample Wasserstein test')
+        }))
+    }))
+ws <- ws[which(ws$Group1 != ws$Group2),]
+ws$padj <- p.adjust(ws$pval)
+write.table(ws, 'Data/qc_wass_distribution_v0.1.txt', sep='\t', 
+            quote=F, row.names=F)
+
+
 
 ```
 

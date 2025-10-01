@@ -1,0 +1,17 @@
+Group1	Group2	KS_Statistic	pval	method
+ctrl	ctrl	2.51873717195539e-17	1	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+ctrl	t0	0.191897098005514	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+ctrl	t3	0.478759361271836	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+ctrl	t6	0.489704849858274	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t0	ctrl	0.191897098005264	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t0	t0	1.5161889755852e-17	1	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t0	t3	0.328216137393973	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t0	t6	0.348205605961734	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t3	ctrl	0.47875936127169	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t3	t0	0.328216137394312	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t3	t3	1.66153982933404e-17	1	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t3	t6	0.0384262259667314	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t6	ctrl	0.489704849858152	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t6	t0	0.348205605962073	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t6	t3	0.0384262259667314	0.000999000999000999	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
+t6	t6	1.66153982933404e-17	1	two-sided Monte-Carlo two-sample Kolmogorov-Smirnov test
