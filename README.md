@@ -10,8 +10,9 @@ This umbrella repository documents and links **all computational analysis code**
 > **_OR7A10 GPCR engineering boosts CAR-NK therapy against solid tumors_**  
 > *Accepted-in-principle at **Nature**, December 2025*
 
-Each linked repository reflects the **exact analysis state used for the manuscript** and is provided for **reproducibility, transparency, and review**.  
-Code is **not actively maintained** beyond the manuscript version.
+Each linked repository reflects the **exact analysis state used for the manuscript** and 
+is provided for **reproducibility, transparency, and review**.  
+Code is **not maintained** beyond the manuscript version.
 
 ---
 
@@ -29,7 +30,7 @@ The **actively maintained version** is available at:
 
 ➡️ https://github.com/Prenauer/SAMBA
 
-➡️ **Repository:** `1_SAMBA/`  
+➡️ **Repository:** [Samba_screen_analysis](https://github.com/Prenauer/OR7A10_NK_GOF_2025/1_SAMBA)
 
 ---
 
@@ -39,7 +40,7 @@ The **actively maintained version** is available at:
 - CRISPRa screen data processing  
 - Gene-level and pathway-level enrichment  
 
-➡️ **Repository:** `2_CRISPRa_screen/`  
+➡️ **Repository:** [CRISPRa_screen](https://github.com/Prenauer/OR7A10_NK_GOF_2025/2_CRISPRa_screen)
 
 ---
 
@@ -55,7 +56,7 @@ The **actively maintained version** is available at:
 2. `02_OrfScreen_QC.Rmd`
 3. `03_OrfScreen_analysis.Rmd`
 
-➡️ **Repository:** `3_ORF_Miniscreen/`  
+➡️ **Repository:** [ORF_screen](https://github.com/Prenauer/OR7A10_NK_GOF_2025/3_ORF_Miniscreen)
 
 ---
 
@@ -69,7 +70,7 @@ The **actively maintained version** is available at:
 - `NKGOF_RNAseq_analysis_DESeq2_Git.R`
 - `Pathway_analysis_Git.R`
 
-➡️ **Repository:** `4_BulkRNAseq/`  
+➡️ **Repository:** [RNA-seq_analysis](https://github.com/Prenauer/OR7A10_NK_GOF_2025/4_BulkRNAseq)
 
 ---
 
@@ -79,15 +80,11 @@ The **actively maintained version** is available at:
 - Quantification of structural variant burden  
 - Identification of unique and genotype-specific SVs  
 
-**Limitations**
-- Structural variant calling is assumed upstream  
-- No workflow automation included  
-
 **Notebooks**
 - `Structural_Variant_quantification.ipynb`
 - `Unique_Variant_Filtration.ipynb`
 
-➡️ **Repository:** `5_WGS/`  
+➡️ **Repository:** [Genetic_Variant_Analysis](https://github.com/Prenauer/OR7A10_NK_GOF_2025/5_WGS)  
 
 ---
 
@@ -99,7 +96,7 @@ The **actively maintained version** is available at:
 - Differential gene and pathway analysis  
 - Dynamic Signature Relationship (DSR) modeling  
 
-➡️ **Repository:** `6_SCT/`  
+➡️ **Repository:** [Single-cell RNA-seq & Dynamic Modeling](https://github.com/Prenauer/OR7A10_NK_GOF_2025/6_SCT)
 
 ---
 
