@@ -1,0 +1,78 @@
+#!/bin/bash
+
+############################
+## Load required modules
+############################
+
+## Load Python module required by velocyto
+module load Python/3.12.3-GCCcore-13.3.0
+
+## Load SAMtools for BAM file handling
+module load SAMtools
+
+
+############################
+## Define shared paths and variables
+############################
+
+## Base project directory
+DIR="nkgof"
+
+## Path to gene annotation (GTF) file
+GTF_PATH="${DIR}/hg38_NC007605.gtf"
+
+
+############################
+## Run velocyto for OR7A10_Tumor
+############################
+
+## Define sample identifier
+SAMPLE_ID="OR7A10_Tumor"
+
+## Define input BAM file
+IN_BAM="${DIR}/${SAMPLE_ID}/possorted_genome_bam.bam"
+
+## Define barcode file
+IN_BC="${DIR}/${SAMPLE_ID}/barcodes.tsv"
+
+## Define output directory
+OUT_PATH="${DIR}/split/${SAMPLE_ID}"
+
+## Create output directory if it does not exist
+mkdir -p "${OUT_PATH}"
+
+## Run velocyto on BAM file
+velocyto run \
+    -b "${IN_BC}" \
+    -@ 20 \
+    -o "${OUT_PATH}" \
+    "${IN_BAM}" \
+    "${GTF_PATH}"
+
+
+############################
+## Run velocyto for OR7A10st_Tumor
+############################
+
+## Define sample identifier
+SAMPLE_ID="OR7A10st_Tumor"
+
+## Define input BAM file
+IN_BAM="${DIR}/${SAMPLE_ID}/possorted_genome_bam.bam"
+
+## Define barcode file
+IN_BC="${DIR}/${SAMPLE_ID}/barcodes.tsv"
+
+## Define output directory
+OUT_PATH="${DIR}/split/${SAMPLE_ID}"
+
+## Create output directory if it does not exist
+mkdir -p "${OUT_PATH}"
+
+## Run velocyto on BAM file
+velocyto run \
+    -b "${IN_BC}" \
+    -@ 1 \
+    -o "${OUT_PATH}" \
+    "${IN_BAM}" \
+    "${GTF_PATH}"

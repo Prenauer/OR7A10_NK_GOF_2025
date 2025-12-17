@@ -1,0 +1,335 @@
+############################
+## Import required libraries
+############################
+
+import os
+import pandas as pd
+import scvelo as scv
+import scanpy as sc
+import loompy
+import numpy as np
+
+
+############################
+## Configure scVelo settings
+############################
+
+## Set verbosity level for logging
+scv.settings.verbosity = 3
+
+## Enable presenter-friendly plotting
+scv.settings.presenter_view = True
+
+## Set default figure parameters
+scv.set_figure_params(
+    style="scvelo",
+    color_map="Dark2"
+)
+
+
+############################
+## Combine loom files from CellRanger / velocyto
+############################
+
+## Define input loom files
+files = [
+    "possorted_genome_bam_U947Q.loom",
+    "possorted_genome_bam_QSQ79.loom"
+]
+
+## Combine loom files into a single object
+loompy.combine(
+    files,
+    key="Accession",
+    output_file="sct_or7a10.loom"
+)
+
+
+############################
+## Load and preprocess loom data
+############################
+
+## Read combined loom file
+ldata = sc.read("sct_or7a10.loom", cache=True)
+
+## Filter and normalize spliced/unspliced layers
+scv.pp.filter_and_normalize(
+    ldata,
+    log=True
+)
+
+
+############################
+## Load Seurat-derived loom and merge with velocity data
+############################
+
+## Read Seurat-exported loom object
+adata = sc.read("so_proc1.loom")
+
+## Merge Seurat and velocyto objects
+adata = scv.utils.merge(adata, ldata)
+
+## Load UMAP coordinates
+adata.obsm["X_umap"] = np.loadtxt(
+    "umap_embedding.dat",
+    delimiter="\t",
+    skiprows=1
+)
+
+## Load iNMF embedding coordinates
+adata.obsm["X_inmf"] = np.loadtxt(
+    "nmf_embedding.dat",
+    delimiter="\t",
+    skiprows=1
+)
+
+
+############################
+## Filter and normalize merged dataset
+############################
+
+## Apply velocity-specific filtering and normalization
+scv.pp.filter_and_normalize(
+    adata,
+    log=False,
+    min_shared_cells=100
+)
+
+
+############################
+## Compute neighborhood graph and moments
+############################
+
+## Compute nearest neighbors
+scv.pp.neighbors(
+    adata,
+    random_state=100,
+    n_neighbors=30
+)
+
+## Compute moments for velocity estimation
+scv.pp.moments(
+    adata,
+    n_neighbors=30
+)
+
+
+############################
+## Recover transcriptional dynamics
+############################
+
+## Fit dynamical model for RNA velocity
+scv.tl.recover_dynamics(
+    adata,
+    n_jobs=20
+)
+
+
+############################
+## Compute RNA velocity and velocity graph
+############################
+
+## Estimate velocity using dynamical model
+scv.tl.velocity(
+    adata,
+    mode="dynamical",
+    groupby="ct",
+    n_jobs=20
+)
+
+## Construct velocity graph
+scv.tl.velocity_graph(
+    adata,
+    n_jobs=20
+)
+
+## Project velocity onto UMAP embedding
+scv.tl.velocity_embedding(
+    adata,
+    basis="umap"
+)
+
+
+############################
+## Compute velocity-derived metrics
+############################
+
+## Calculate velocity confidence
+scv.tl.velocity_confidence(adata)
+
+## Identify terminal states
+scv.tl.terminal_states(
+    adata,
+    self_transitions=True
+)
+
+## Compute velocity pseudotime
+scv.tl.velocity_pseudotime(
+    adata,
+    save_diffmap=True
+)
+
+
+############################
+## Visualize velocity pseudotime and latent time
+############################
+
+## Plot velocity pseudotime stream
+scv.pl.velocity_embedding_stream(
+    adata,
+    basis="umap",
+    color="velocity_pseudotime",
+    color_map="gnuplot"
+)
+
+## Compute latent time
+scv.tl.latent_time(adata)
+
+## Plot latent time stream
+scv.pl.velocity_embedding_stream(
+    adata,
+    basis="umap",
+    color="latent_time",
+    color_map="gnuplot"
+)
+
+
+############################
+## Differential kinetic testing
+############################
+
+## Rank genes by likelihood of dynamical fit
+top_genes = adata.var["fit_likelihood"].sort_values(ascending=False)
+
+## Perform differential kinetic testing across samples
+scv.tl.differential_kinetic_test(
+    adata,
+    groupby="sample"
+)
+
+
+############################
+## Save and reload scVelo results
+############################
+
+## Write processed AnnData object
+adata.write("scvelo_analysis.h5ad")
+
+## Reload AnnData object
+adata = sc.read("scvelo_analysis.h5ad")
+
+
+############################
+## Visualize velocity trajectories
+############################
+
+## Velocity pseudotime stream plot
+scv.pl.velocity_embedding_stream(
+    adata,
+    basis="umap",
+    color="velocity_pseudotime",
+    color_map="gnuplot",
+    show=False,
+    dpi=300,
+    figsize=(5, 3.6),
+    save="04a_stream_velocity.png"
+)
+
+## Latent time stream plot
+scv.pl.velocity_embedding_stream(
+    adata,
+    basis="umap",
+    color="latent_time",
+    color_map="gnuplot",
+    show=False,
+    dpi=300,
+    figsize=(5, 3.6),
+    save="04b_stream_latent_time.png"
+)
+
+## Velocity self-transition stream plot
+scv.pl.velocity_embedding_stream(
+    adata,
+    basis="umap",
+    color="velocity_self_transition",
+    color_map="gnuplot",
+    show=False,
+    dpi=300,
+    figsize=(5, 3.6),
+    save="04c_stream_self_transition.png"
+)
+
+
+############################
+## Visualize velocity speed and confidence
+############################
+
+## Plot velocity magnitude
+scv.pl.scatter(
+    adata,
+    color="velocity_length",
+    cmap="coolwarm",
+    perc=[5, 95],
+    show=False,
+    dpi=300,
+    figsize=(5, 3.6),
+    save="04d_velocity_speed.png"
+)
+
+## Plot velocity confidence
+scv.pl.scatter(
+    adata,
+    color="velocity_confidence",
+    cmap="coolwarm",
+    perc=[5, 95],
+    show=False,
+    dpi=300,
+    figsize=(5, 3.6),
+    save="04e_velocity_confidence.png"
+)
+
+
+############################
+## Visualize root and terminal states
+############################
+
+## Plot root cells
+scv.pl.scatter(
+    adata,
+    color="root_cells",
+    cmap="coolwarm",
+    perc=[5, 95],
+    show=False,
+    dpi=300,
+    figsize=(5, 3.6),
+    save="04f_root_cells.png"
+)
+
+## Plot terminal cells
+scv.pl.scatter(
+    adata,
+    color="end_points",
+    cmap="coolwarm",
+    perc=[5, 95],
+    show=False,
+    dpi=300,
+    figsize=(5, 3.6),
+    save="04g_end_points.png"
+)
+
+
+############################
+## Export scVelo metadata tables
+############################
+
+## Export cell-level metadata
+pd.DataFrame(adata.obs).to_csv(
+    "04_scvelo_obs.txt",
+    sep="\t"
+)
+
+## Export gene-level metadata
+pd.DataFrame(adata.var).to_csv(
+    "04_scvelo_var.txt",
+    sep="\t"
+)

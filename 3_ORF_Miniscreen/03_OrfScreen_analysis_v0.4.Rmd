@@ -14,7 +14,16 @@ knitr::opts_chunk$set(message = F, eval=F)
 ### Load libraries and prepare environment
 ```{r Setup environment}
 
+############################
+## Set working directory
+############################
+
 setwd('3_ORF_Miniscreen')
+
+############################
+## Load required libraries
+############################
+
 library(dplyr)
 library(stringr)
 library(ggplot2)
@@ -30,37 +39,95 @@ source('Scripts/Samba_official_V1.1.R')
 ### UMI-level analysis
 ```{r UMI-level analysis}
 
-## Load data
-d <- read.delim('Data/data_counts_v0.2.txt')
-## Exclude plasmid samples from analysis
-d <- d[,!grepl('ctrl_plasmid', colnames(d))]
+############################
+## Load and filter input data
+############################
 
-## use time as a numerical coefficient 
-design <- str_split(colnames(d)[3:ncol(d)],'_', simplify=T) %>% data.frame()
-colnames(design) <- c('type','donor', 'time','rep')
-design$time <- substr(design$time, 2,2) %>% as.integer()
-design <- model.matrix(~ time + donor, data=design)
+## Read sgRNA count matrix
+d <- read.delim('Data/data_counts.txt')
+
+## Remove plasmid control samples from analysis
+d <- d[, !grepl('ctrl_plasmid', colnames(d))]
+
+############################
+## Linear time model (time as numeric)
+############################
+
+## Parse sample metadata from column names
+design <- str_split(colnames(d)[3:ncol(d)], '_', simplify = TRUE) %>% 
+    data.frame()
+
+## Assign column names to design dataframe
+colnames(design) <- c('type','donor','time','rep')
+
+## Convert time to numeric variable
+design$time <- substr(design$time, 2, 2) %>% as.integer()
+
+## Construct design matrix with numeric time and donor
+design <- model.matrix(~ time + donor, data = design)
+
+## Preprocess data for SAMBA using linear time design
 dge <- Preprocess_Samba(data = d, design = design)
-r.umi <- data.frame(analysis='linear-time', 
-                Analyze_Samba_Guides(dge = dge, coefficient = 'time'))
 
+## Perform guide-level analysis using linear time coefficient
+r.umi <- data.frame(
+  analysis = 'linear-time',
+  Analyze_Samba_Guides(dge = dge, coefficient = 'time')
+)
 
-## use time as a categorical coefficient 
-design <- str_split(colnames(d)[3:ncol(d)],'_', simplify=T) %>% data.frame()
-colnames(design) <- c('type','donor', 'time','rep')
+############################
+## Categorical time model
+############################
+
+## Parse sample metadata from column names
+design <- str_split(colnames(d)[3:ncol(d)], '_', simplify = TRUE) %>% 
+    data.frame()
+
+## Assign column names to design dataframe
+colnames(design) <- c('type','donor','time','rep')
+
+## Convert time to categorical factor
 design$time <- factor(design$time)
-design <- model.matrix(~ time + donor, data=design)
-dge <- Preprocess_Samba(data = d, 
-                        design = design)
-r.umi <- rbind(r.umi, 
-           data.frame(analysis='time_d3', 
-                      Analyze_Samba_Guides(dge = dge, coefficient = 'timet3')))
-r.umi <- rbind(r.umi, 
-           data.frame(analysis='time_d6', 
-                      Analyze_Samba_Guides(dge = dge, coefficient = 'timet6')))
+
+## Construct design matrix with categorical time and donor
+design <- model.matrix(~ time + donor, data = design)
+
+## Preprocess data for SAMBA using categorical time design
+dge <- Preprocess_Samba(data = d, design = design)
+
+## Perform guide-level analysis for day 3 timepoint
+r.umi <- rbind(
+  r.umi,
+  data.frame(
+    analysis = 'time_d3',
+    Analyze_Samba_Guides(dge = dge, coefficient = 'timet3')
+  )
+)
+
+## Perform guide-level analysis for day 6 timepoint
+r.umi <- rbind(
+  r.umi,
+  data.frame(
+    analysis = 'time_d6',
+    Analyze_Samba_Guides(dge = dge, coefficient = 'timet6')
+  )
+)
+
+############################
+## Save UMI-level results
+############################
+
+## Order UMI-level results by test statistic
 r.umi <- r.umi[order(-r.umi$Statistic),]
-write.table(r.umi, 'Data/samb_umiRes_v0.2.txt', sep='\t', 
-            quote=F, row.names=F)
+
+## Write UMI-level SAMBA results to file
+write.table(
+  r.umi,
+  'Data/samb_umiRes.txt',
+  sep = '\t',
+  quote = FALSE,
+  row.names = FALSE
+)
 
 ```
 
@@ -68,167 +135,206 @@ write.table(r.umi, 'Data/samb_umiRes_v0.2.txt', sep='\t',
 ### Gene-level analysis results
 ```{r Gene-level analysis results}
 
-## Gene-level analysis results
-r.umi <- read.delim('Data/samb_umiRes_v0.2.txt')
-r3 <- Analyze_Samba_Genes(r.umi[which(r.umi$analysis=='time_d6'),-1], 
-                          ntc.as.null.dist=F, score.method='GeneScore')
+############################
+## Load UMI-level results
+############################
+
+## Read UMI-level SAMBA results
+r.umi <- read.delim('Data/samb_umiRes.txt')
+
+############################
+## Aggregate UMI results to gene level
+############################
+
+## Compute gene-level results for day 6 comparison
+r3 <- Analyze_Samba_Genes(
+  r.umi[which(r.umi$analysis == 'time_d6'), -1],
+  ntc.as.null.dist = FALSE,
+  score.method = 'GeneScore'
+)
+
+## Annotate analysis type
 r3$analysis <- 'time_d6'
-r2 <- Analyze_Samba_Genes(r.umi[which(r.umi$analysis=='time_d3'),-1], 
-                          ntc.as.null.dist=F, score.method='GeneScore')
+
+## Compute gene-level results for day 3 comparison
+r2 <- Analyze_Samba_Genes(
+  r.umi[which(r.umi$analysis == 'time_d3'), -1],
+  ntc.as.null.dist = FALSE,
+  score.method = 'GeneScore'
+)
+
+## Annotate analysis type
 r2$analysis <- 'time_d3'
-r1 <- Analyze_Samba_Genes(r.umi[which(r.umi$analysis=='linear-time'),-1], 
-                          ntc.as.null.dist=F, score.method='GeneScore')
+
+## Compute gene-level results for linear time model
+r1 <- Analyze_Samba_Genes(
+  r.umi[which(r.umi$analysis == 'linear-time'), -1],
+  ntc.as.null.dist = FALSE,
+  score.method = 'GeneScore'
+)
+
+## Annotate analysis type
 r1$analysis <- 'linear-time'
-r <- do.call(rbind,list(r1,r2,r3))
 
+## Combine all gene-level result tables
+r <- do.call(rbind, list(r1, r2, r3))
 
-## Add additional info to result table
-r <- read.delim('Data/samb_geneRes_v0.2.txt')
-null.ctrls <- structure(rep('Ctrl',5), names=c('ECFP','EYFP','EGFP','BFP2','RFP'))
-top.hits <- structure(rep('TopHits',5), 
-                      names=c('OR7A10.NM_001005190','APLN.NM_017413',
-                              'CYB5B.NM_030579','LRRC23.NM_006992',
-                              'HPRT1.NM_000194'))
+############################
+## Annotate gene-level results
+############################
+
+## Reload gene-level results table
+r <- read.delim('Data/samb_geneRes.txt')
+
+## Define null control gene annotations
+null.ctrls <- structure(
+  rep('Ctrl', 5),
+  names = c('ECFP','EYFP','EGFP','BFP2','RFP')
+)
+
+## Define top-hit gene annotations
+top.hits <- structure(
+  rep('TopHits', 5),
+  names = c(
+    'OR7A10.NM_001005190',
+    'APLN.NM_017413',
+    'CYB5B.NM_030579',
+    'LRRC23.NM_006992',
+    'HPRT1.NM_000194'
+  )
+)
+
+## Assign gene type labels based on control mapping
 r$Gene_type <- null.ctrls[r$Gene]
+
+## Assign default gene type to non-controls
 r$Gene_type[is.na(r$Gene_type)] <- 'Gene'
 
-## Fix adjusted p value to genome wide:
-#   Note: Gencode v48 has 89,843 protein-coding transcripts
-r <- mutate(r, .by='analysis', qval_global_pos=p.adjust(pval_pos, n=89843))
-r <- r[,c(10:11,1:4,12,5:9)]
+############################
+## Adjust p-values genome-wide
+############################
 
-write.table(r, 'Data/samb_geneResAdj_v0.2.txt', sep='\t', 
-            quote=F, row.names=F)
+## Compute genome-wide adjusted q-values per analysis
+r <- mutate(
+  r,
+  .by = 'analysis',
+  qval_global_pos = p.adjust(pval_pos, n = 89843)
+)
 
+## Reorder columns for output
+r <- r[, c(10:11, 1:4, 12, 5:9)]
+
+## Save adjusted gene-level results
+write.table(
+  r,
+  'Data/samb_geneResAdj.txt',
+  sep = '\t',
+  quote = FALSE,
+  row.names = FALSE
+)
 ```
 
 
 ### Plot results
 ```{r Plot results}
 
-## Gene-level plots
-r <- read.delim('Data/samb_geneResAdj_v0.2.txt')
+############################
+## Gene-level volcano plots
+############################
+
+## Load adjusted gene-level results
+r <- read.delim('Data/samb_geneResAdj.txt')
+
+## Generate plots for each analysis type
 plist <- lapply(unique(r$analysis), function(analysis.type){
-    cols <- c(Gene='#B2B2B2',Ctrl='#496AB4') 
-    r$Gene_type <- factor(r$Gene_type, levels=c('Gene','Ctrl','TopHits'))
-    r <- r[order(r$Gene_type),]
-    line_segments <- data.frame(x1=c(min(r[which(r$analysis==analysis.type),'score_pos']),-0.5,0.5,0.5),
-                                x2=c(-0.5,-0.5,0.5,max(r[which(r$analysis==analysis.type),'score_pos'])),
-                                y1=c(2,2,max(-log10(r[which(r$analysis==analysis.type),'qval_pos'])),2),
-                                y2=c(2,max(-log10(r[which(r$analysis==analysis.type),'qval_pos'])),2,2))
-    line_segments <- geom_segment(data=line_segments, aes(x=x1, xend=x2, y=y1, yend=y2),
-                                  linetype='dashed',color='gray20')
-    ggplot(r[which(r$analysis==analysis.type),], 
-           aes(x=score_pos, y=-log10(qval_pos))) + line_segments +
-        #geom_point_rast(size=2, color='gray20')  + 
-        #geom_point_rast(size=1.25, aes(color=Gene_type)) +
-        geom_point_rast(size=2, stroke=0.2, shape=21, aes(fill=Gene_type), color='gray20') +
-        scale_fill_manual(values=cols) + theme_classic() + theme(legend.position='bottom') +
-        ggrepel::geom_text_repel(size=2.5, min.segment.length=0, segment.size=0.2,
-                                 data=r[which(r$analysis==analysis.type & 
-                                                  r$qval_pos < 0.01 & 
-                                                  abs(r$score_pos) > 0.5),],
-                                 aes(label=str_split_i(Gene, '\\.',1))) +
-        labs(x='Log2 fold-change', y='Adj. p value', title=analysis.type)
+
+  ## Define color palette for gene types
+  cols <- c(Gene = '#B2B2B2', Ctrl = '#496AB4')
+
+  ## Set factor levels for gene type
+  r$Gene_type <- factor(r$Gene_type, levels = c('Gene','Ctrl','TopHits'))
+
+  ## Order data for plotting
+  r <- r[order(r$Gene_type),]
+
+  ## Define reference line segments for volcano plot
+  line_segments <- data.frame(
+    x1 = c(min(r[which(r$analysis == analysis.type), 'score_pos']), -0.5, 0.5, 0.5),
+    x2 = c(-0.5, -0.5, 0.5, max(r[which(r$analysis == analysis.type), 'score_pos'])),
+    y1 = c(
+      2,
+      2,
+      max(-log10(r[which(r$analysis == analysis.type), 'qval_pos'])),
+      2
+    ),
+    y2 = c(
+      2,
+      max(-log10(r[which(r$analysis == analysis.type), 'qval_pos'])),
+      2,
+      2
+    )
+  )
+
+  ## Create dashed reference lines
+  line_segments <- geom_segment(
+    data = line_segments,
+    aes(x = x1, xend = x2, y = y1, yend = y2),
+    linetype = 'dashed',
+    color = 'gray20'
+  )
+
+  ## Build volcano plot
+  ggplot(
+    r[which(r$analysis == analysis.type),],
+    aes(x = score_pos, y = -log10(qval_pos))
+  ) +
+    line_segments +
+    geom_point_rast(
+      size = 2,
+      stroke = 0.2,
+      shape = 21,
+      aes(fill = Gene_type),
+      color = 'gray20'
+    ) +
+    scale_fill_manual(values = cols) +
+    theme_classic() +
+    theme(legend.position = 'bottom') +
+    ggrepel::geom_text_repel(
+      size = 2.5,
+      min.segment.length = 0,
+      segment.size = 0.2,
+      data = r[
+        which(
+          r$analysis == analysis.type &
+          r$qval_pos < 0.01 &
+          abs(r$score_pos) > 0.5
+        ),
+      ],
+      aes(label = str_split_i(Gene, '\\.', 1))
+    ) +
+    labs(
+      x = 'Log2 fold-change',
+      y = 'Adj. p value',
+      title = analysis.type
+    )
 })
-p <- cowplot::plot_grid(plotlist=plist, align='hv', axis='lbt', nrow=1)
-ggsave(plot=p, 'Figures/enr_gene_volcano.pdf', height=2.5, width=3*3, scale=1.25)
 
+## Combine gene-level volcano plots
+p <- cowplot::plot_grid(
+  plotlist = plist,
+  align = 'hv',
+  axis = 'lbt',
+  nrow = 1
+)
 
-## UMI-level plots
-r <- read.delim('Data/samb_umiRes_v0.2.txt')
-r$Gene_type <- null.ctrls[r$Gene]
-r$Gene_type[which(r$Gene=='OR7A10')] <- 'OR7A10'
-r$Gene_type[which(r$Gene=='LRRC23')] <- 'LRRC23'
-r$Gene_type[is.na(r$Gene_type)] <- 'Gene'
-
-plist <- lapply(unique(r$analysis), function(analysis.type){
-    cols <- c(Gene='#B2B2B2',OR7A10='#E9AC4C',Ctrl='#496AB4', LRRC23='#D85446') 
-    r$Gene_type <- factor(r$Gene_type, levels=c('Gene','Ctrl','LRRC23','OR7A10'))
-    r <- r[order(r$Gene_type),]
-    line_segments <- data.frame(x1=c(min(r[which(r$analysis==analysis.type),'logFC']),-0.5,0.5,0.5),
-                                x2=c(-0.5,-0.5,0.5,max(r[which(r$analysis==analysis.type),'logFC'])),
-                                y1=c(2,2,max(-log10(r[which(r$analysis==analysis.type),'FDR'])),2),
-                                y2=c(2,max(-log10(r[which(r$analysis==analysis.type),'FDR'])),2,2))
-    line_segments <- geom_segment(data=line_segments, aes(x=x1, xend=x2, y=y1, yend=y2),
-                                  linetype='dashed',color='gray20')
-    ggplot(r[which(r$analysis==analysis.type),], 
-           aes(x=logFC, y=-log10(FDR))) + line_segments +
-        geom_point_rast(size=.6, color='gray20')  + 
-        geom_point_rast(size=0.3, aes(color=Gene_type)) +
-        #geom_point_rast(size=2, stroke=0.2, shape=21, aes(fill=Gene_type), color='gray20') +
-        scale_color_manual(values=cols) + theme_classic() + theme(legend.position='bottom') +
-        ggrepel::geom_text_repel(size=2.5, min.segment.length=0, segment.size=0.2,
-                                 data=r[which(r$analysis==analysis.type & 
-                                                  r$FDR < 0.01 & 
-                                                  abs(r$logFC) > 0.5),],
-                                 aes(label=str_split_i(Gene, '\\.',1))) +
-        labs(x='Log2 fold-change', y='Adj. p value', title=analysis.type)
-})
-p <- cowplot::plot_grid(plotlist=plist, align='hv', axis='lbt', nrow=1)
-ggsave(plot=p, 'Figures/enr_umi_volcano.pdf', height=2.5, width=3.5*3, scale=1.25)
-
-
-
-## Beeswarm plot
-r <- read.delim('Data/samb_umiRes_v0.2.txt')
-glist <- c("OR7A10", 
-           c('RFP','EGFP','ECFP','EYFP','BFP2'))
-gcols <- structure(c('#E9AC4C','gray80','gray70','gray60','gray40','gray20'), names=glist)
-r <- r[order(-r$Statistic),]
-normdata <- edgeR::cpm(dge, log=T)
-normdata <- normdata[which(str_split_i(rownames(normdata),'_',1) %in% glist),]
-d2 <- reshape2::melt(normdata)
-colnames(d2) <- c('Gene','id','value')
-d2$Gene <- str_split_i(d2$Gene,'_',1)
-d2$Gene <- factor(d2$Gene, levels=rev(glist))
-d2$time <- substr(str_split_i(d2$id,'_',3), 2,2) %>% as.integer()
-d2 <- d2[with(d2, order(time, Gene)),]
-d.line <- reframe(d2, .by=c('time','Gene'), y=mean(value), 
-                  id=paste0(time[1], Gene[1]),
-                  ymax=sd(value)+mean(value), ymin=mean(value)-sd(value))
-d2$group <- apply(d2[,c('time','Gene')], 1, paste0, collapse='_') 
-d2$group <- factor(d2$group, levels=unique(d2$group))
-d2$time <- factor(d2$time, levels=unique(d2$time))
-d.line$time <- factor(d.line$time)
-p <- ggplot(d2, aes(x=time, color=Gene,  y=value)) + 
-    geom_point_rast(size=0.6, shape=21,
-                    aes(y=value,fill=Gene), position=
-                        ggbeeswarm::position_quasirandom(dodge.width=0.9), 
-                    color='gray20') +
-    geom_point_rast(size=0.1, 
-                    aes(color=Gene, y=value), position=
-                        ggbeeswarm::position_quasirandom(dodge.width=0.9)) +
-    geom_errorbar(data=d.line, aes(ymin=ymin, ymax=ymax, y=y),
-                  position=position_dodge(width=0.9)) +
-    geom_point(data=d.line, aes(x=time, y=y, color=Gene),
-                  position=position_dodge(width=0.9)) +
-    scale_color_manual(values=gcols)+scale_fill_manual(values=gcols) +
-    theme_classic() + theme(legend.position='bottom') +
-    labs(x='Time (days in tumor)', y='Norm. counts') 
-
-ggsave(plot=p, 'Figures/enr_vln_horiz.pdf', height=2, width=4, scale=1.25)
-ggsave(plot=p + coord_flip(), 
-       'Figures/enr_vln_vert.pdf', height=4, width=3, scale=1.5)
-
-
-## Bubble-plot results by gene level
-r <- read.delim('Data/samb_geneResAdj_v0.2.txt')
-plist <- lapply(unique(r$analysis), function(analysis.type){
-    cols <- c(Gene='#B2B2B2',Ctrl='#496AB4') 
-    r$Gene_type <- factor(r$Gene_type, levels=c('Gene','Ctrl','TopHits'))
-    r <- r[order(r$pval_pos),]
-    r2 <- head(r[which(r$analysis==analysis.type),],40)
-    r2$qval_pos[which(r2$qval_pos==0)] <- 0.1 * min(r2$qval_pos[which(r2$qval_pos>0)])
-    r2$Gene <- factor(r2$Gene, levels=(r2$Gene))
-    ggplot(r2, aes(x=Gene, y=-log10(qval_pos))) + 
-        geom_point(aes(size=score_pos, color=-log10(qval_pos))) + 
-        scale_color_viridis_c() + theme_classic() +
-        labs(x='Adj. p value (-log10)', y='Gene ORF', title=analysis.type) +
-        theme(axis.text.x=element_text(angle=90))
-})
-p <- cowplot::plot_grid(plotlist=plist, align='hv', axis='lbt', nrow=1)
-ggsave(plot=p, 'Figures/res_gene_bubble_v0.2.pdf', height=1.5, width=4*3, scale=1.5)
+## Save gene-level volcano plot figure
+ggsave(
+  plot = p,
+  'Figures/enr_gene_volcano.pdf',
+  height = 2.5,
+  width = 3 * 3,
+  scale = 1.25
+)
 
 ```
 
@@ -236,43 +342,131 @@ ggsave(plot=p, 'Figures/res_gene_bubble_v0.2.pdf', height=1.5, width=4*3, scale=
 ### Violin plots of OR7A10 and controls
 ```{r Violin plots of OR7A10 and controls}
 
-## Violin plots of OR7A10 and controls
-d <- read.delim('Data/data_counts_v0.2.txt')
-glist <- c("OR7A10",  c('RFP','EGFP','ECFP','EYFP','BFP2'))
-d2 <- data.frame(d[,1:2], DESeq2::varianceStabilizingTransformation(
-    as.matrix(d[,3:ncol(d)]), fitType='local'))
+############################
+## Prepare normalized data
+############################
+
+## Read sgRNA count matrix
+d <- read.delim('Data/data_counts.txt')
+
+## Define genes of interest
+glist <- c("OR7A10", c('RFP','EGFP','ECFP','EYFP','BFP2'))
+
+## Apply variance-stabilizing transformation
+d2 <- data.frame(
+  d[,1:2],
+  DESeq2::varianceStabilizingTransformation(
+    as.matrix(d[,3:ncol(d)]),
+    fitType = 'local'
+  )
+)
+
+## Subset data to genes of interest
 d2 <- d2[which(d2$Gene %in% glist),]
 
-d2 <- reshape2::melt(d2)
-colnames(d2) <- c('sgRNA','Gene','id','value')
-d2$Gene[which(d2$Gene %in% c('RFP','EGFP','ECFP','EYFP','BFP2'))] <- 'Ctrl'
-d2$group <- apply(str_split(d2$id, '_',simplify=T)[,c(1,3)], 1,paste0, collapse='_')
-d2$Gene <- factor(d2$Gene, levels=c('OR7A10','Ctrl'))
-d2$group <- factor(d2$group, levels=unique(sort(d2$group)))
-d2 <- d2[with(d2, order(group, Gene)),]
-d2$id <- factor(d2$id, levels=as.character(unique(d2$id)))
-d3 <- reframe(d2, .by=c('Gene', 'id','group'), y=mean(value), 
-              ymin=mean(value)-sd(value), ymax=mean(value)+sd(value))
-p <- ggplot(d2, aes(x=id, y=y, color=group,fill=group)) + 
-    geom_point_rast(size=0.6, shape=21,
-                    aes(y=value,fill=group), position=
-                        ggbeeswarm::position_quasirandom(), 
-                    color='gray20') +
-    geom_point_rast(size=0.1, 
-                    aes(fill=group,x=id, y=value), position=
-                        ggbeeswarm::position_quasirandom()) +
-    geom_hline(yintercept=1, linetype='dashed', size=0.5, color='gray30') +
-    geom_errorbar(data=d3, aes(ymin=ymin, ymax=ymax, y=y),
-                  position=position_dodge(width=0.9)) +
-    geom_point(data=d3, aes(x=id, y=y),
-               position=position_dodge(width=0.9)) +
-    facet_wrap(~Gene, ncol=1) + 
-    scale_color_manual(values=c(ctrl_t0='#B2B2B2',nk_t0="#FCF171F1",
-                                nk_t3="#F48841FF",nk_t6="firebrick"))+
-    theme_classic() + theme(legend.position='bottom', axis.text.x = element_text(angle=90))
-ggsave(plot = p, filename = file.path(paste0('Figures/res_umi-by-sample_v0.2.pdf')), 
-       height = 3, width = 3.75, scale=1.5)
+############################
+## Reshape and annotate data
+############################
 
+## Convert wide-format data to long format
+d2 <- reshape2::melt(d2)
+
+## Rename columns for clarity
+colnames(d2) <- c('sgRNA','Gene','id','value')
+
+## Collapse fluorescent controls into single category
+d2$Gene[which(d2$Gene %in% c('RFP','EGFP','ECFP','EYFP','BFP2'))] <- 'Ctrl'
+
+## Construct experimental group labels
+d2$group <- apply(
+  str_split(d2$id, '_', simplify = TRUE)[,c(1,3)],
+  1,
+  paste0,
+  collapse = '_'
+)
+
+## Set gene factor levels
+d2$Gene <- factor(d2$Gene, levels = c('OR7A10','Ctrl'))
+
+## Set group factor levels
+d2$group <- factor(d2$group, levels = unique(sort(d2$group)))
+
+## Order data for plotting
+d2 <- d2[with(d2, order(group, Gene)),]
+
+## Fix sample factor ordering
+d2$id <- factor(d2$id, levels = as.character(unique(d2$id)))
+
+############################
+## Compute summary statistics
+############################
+
+## Compute per-sample mean and standard deviation
+d3 <- reframe(
+  d2,
+  .by = c('Gene','id','group'),
+  y = mean(value),
+  ymin = mean(value) - sd(value),
+  ymax = mean(value) + sd(value)
+)
+
+############################
+## Generate violin-style plots
+############################
+
+## Construct beeswarm and error bar plot
+p <- ggplot(d2, aes(x = id, y = y, color = group, fill = group)) + 
+  geom_point_rast(
+    size = 0.6,
+    shape = 21,
+    aes(y = value, fill = group),
+    position = ggbeeswarm::position_quasirandom(),
+    color = 'gray20'
+  ) +
+  geom_point_rast(
+    size = 0.1,
+    aes(fill = group, x = id, y = value),
+    position = ggbeeswarm::position_quasirandom()
+  ) +
+  geom_hline(
+    yintercept = 1,
+    linetype = 'dashed',
+    size = 0.5,
+    color = 'gray30'
+  ) +
+  geom_errorbar(
+    data = d3,
+    aes(ymin = ymin, ymax = ymax, y = y),
+    position = position_dodge(width = 0.9)
+  ) +
+  geom_point(
+    data = d3,
+    aes(x = id, y = y),
+    position = position_dodge(width = 0.9)
+  ) +
+  facet_wrap(~ Gene, ncol = 1) +
+  scale_color_manual(
+    values = c(
+      ctrl_t0 = '#B2B2B2',
+      nk_t0   = "#FCF171F1",
+      nk_t3   = "#F48841FF",
+      nk_t6   = "firebrick"
+    )
+  ) +
+  theme_classic() +
+  theme(
+    legend.position = 'bottom',
+    axis.text.x = element_text(angle = 90)
+  )
+
+## Save violin-style plot
+ggsave(
+  plot = p,
+  filename = 'Figures/res_umi-by-sample.pdf',
+  height = 3,
+  width = 3.75,
+  scale = 1.5
+)
 
 ```
 
