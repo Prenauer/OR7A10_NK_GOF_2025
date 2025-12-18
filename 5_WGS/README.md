@@ -150,7 +150,7 @@ This project is released under the **MIT License**. See the `LICENSE` file for d
 
 ## ✉️ Contact
 
-For questions or collaboration:
+For questions:
 - **Name:** Kaiyuan Tang
 - **Email:** kaiyuan.tang@yale.edu
 
