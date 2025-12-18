@@ -1,4 +1,4 @@
-# 🧬 OR7A10 CAR-NK Computational Analyses — Umbrella Repository
+# 🧬 OR7A10 CAR-NK Computational Analyses
 
 [![Language](https://img.shields.io/badge/language-R%20%7C%20Python-blue)]  
 [![Analysis](https://img.shields.io/badge/analysis-single--cell%20%7C%20RNA--seq%20%7C%20genomics-purple)]  
@@ -10,66 +10,41 @@ This umbrella repository documents and links **all computational analysis code**
 > **_OR7A10 GPCR engineering boosts CAR-NK therapy against solid tumors_**  
 > *Accepted-in-principle at **Nature**, December 2025*
 
-Each linked repository reflects the **exact analysis state used for the manuscript** and is provided for **reproducibility, transparency, and review**.  
-Code is **not actively maintained** beyond the manuscript version unless explicitly stated.
+Each linked repository reflects the **exact analysis state used for the manuscript** and 
+is provided for **reproducibility, transparency, and review**.  
+Code is **not maintained** beyond the manuscript version.
 
 ---
 
 ## 📁 Analysis Repositories
 
-### 1️⃣ Single-cell RNA-seq & Dynamic Modeling (Core Analysis)
+### 1️⃣ SAMBA (Manuscript Version)
 
 **Scope**
-- scRNA-seq preprocessing and clustering  
-- RNA velocity and trajectory inference  
-- Differential gene and pathway analysis  
-- Dynamic Signature Relationship (DSR) modeling  
+- Signature Activity Modeling and Bayesian Analysis (SAMBA)
+- Manuscript implementation only
 
-**Key technologies**
-- Seurat / AUCell (R)
-- velocyto / scVelo (Python)
-- GAM-based dynamic modeling
+⚠️ **Important**
+This repository contains **only the version of SAMBA used in the manuscript**.  
+The **actively maintained version** is available at:
 
-➡️ **Repository:** `RNAseq_scRNAseq_Analysis/`  
-➡️ **README:** `README_02.md`
+➡️ https://github.com/Prenauer/SAMBA
+
+➡️ **Repository:** [Samba_screen_analysis](https://github.com/Prenauer/OR7A10_NK_GOF_2025/tree/main/1_SAMBA)
 
 ---
 
-### 2️⃣ Structural Variant Analysis
+### 2️⃣ CRISPRa Screen Analysis
 
 **Scope**
-- Quantification of structural variant burden  
-- Identification of unique and genotype-specific SVs  
+- CRISPRa screen data processing  
+- Gene-level and pathway-level enrichment  
 
-**Limitations**
-- Structural variant calling is assumed upstream  
-- No workflow automation included  
-
-**Notebooks**
-- `Structural_Variant_quantification.ipynb`
-- `Unique_Variant_Filtration.ipynb`
-
-➡️ **Repository:** `Structural_Variant_Analysis/`  
-➡️ **README:** `README_01.md`
+➡️ **Repository:** [CRISPRa_screen](https://github.com/Prenauer/OR7A10_NK_GOF_2025/tree/main/2_CRISPRa_screen)
 
 ---
 
-### 3️⃣ Bulk RNA-seq (NK GOF / LOF)
-
-**Scope**
-- Differential expression with DESeq2  
-- Pathway enrichment and visualization  
-
-**Key scripts**
-- `NKGOF_RNAseq_analysis_DESeq2_Git.R`
-- `Pathway_analysis_Git.R`
-
-➡️ **Repository:** `Bulk_RNAseq_Analysis/`  
-➡️ **README:** `README_03.md`
-
----
-
-### 4️⃣ ORF Screen Analysis
+### 3️⃣ ORF Screen Analysis
 
 **Scope**
 - ORF screen preprocessing  
@@ -81,59 +56,51 @@ Code is **not actively maintained** beyond the manuscript version unless explici
 2. `02_OrfScreen_QC.Rmd`
 3. `03_OrfScreen_analysis.Rmd`
 
-➡️ **Repository:** `ORF_Screen_Analysis/`  
-➡️ **README:** `README_04.md`
+➡️ **Repository:** [ORF_screen](https://github.com/Prenauer/OR7A10_NK_GOF_2025/tree/main/3_ORF_Miniscreen)
 
 ---
 
-### 5️⃣ CRISPRa Screen Analysis
+### 4️⃣ Bulk RNA-seq (NK GOF / LOF)
 
 **Scope**
-- CRISPRa screen data processing  
-- Gene-level and pathway-level enrichment  
+- Differential expression with DESeq2  
+- Pathway enrichment and visualization  
 
-➡️ **Repository:** `CRISPRa_Screen_Analysis/`  
-➡️ **README:** `README_05.md`
+**Key scripts**
+- `NKGOF_RNAseq_analysis_DESeq2_Git.R`
+- `Pathway_analysis_Git.R`
+
+➡️ **Repository:** [RNA-seq_analysis](https://github.com/Prenauer/OR7A10_NK_GOF_2025/tree/main/4_BulkRNAseq)
 
 ---
 
-### 6️⃣ SAMBA (Manuscript Version)
+### 5️⃣ Structural Variant Analysis
 
 **Scope**
-- Signature Activity Modeling and Bayesian Analysis (SAMBA)
-- Manuscript-frozen implementation only
+- Quantification of structural variant burden  
+- Identification of unique and genotype-specific SVs  
 
-⚠️ **Important**
-This repository contains **only the version of SAMBA used in the manuscript**.  
-The **actively maintained version** is available at:
+**Notebooks**
+- `Structural_Variant_quantification.ipynb`
+- `Unique_Variant_Filtration.ipynb`
 
-➡️ https://github.com/Prenauer/SAMBA
-
-➡️ **Repository:** `SAMBA_Manuscript_Version/`  
-➡️ **README:** `README_06.md`
+➡️ **Repository:** [Genetic_Variant_Analysis](https://github.com/Prenauer/OR7A10_NK_GOF_2025/tree/main/5_WGS)  
 
 ---
 
-## 🔁 Naming & Scope Conventions (Standardized)
+### 6️⃣ Single-cell RNA-seq & Dynamic Modeling (Core Analysis)
 
-Across all repositories:
+**Scope**
+- scRNA-seq preprocessing and clustering  
+- RNA velocity and trajectory inference  
+- Differential gene and pathway analysis  
+- Dynamic Signature Relationship (DSR) modeling  
 
-- **Status:** Manuscript Version  
-- **Maintenance:** No active development unless stated  
-- **Automation:** No workflow orchestration provided  
-- **Purpose:** Reproducibility and transparency  
-
-All READMEs follow a shared structure:
-- Overview  
-- Repository contents  
-- Dependencies  
-- Execution order  
-- Scope and limitations  
-- Citation  
+➡️ **Repository:** [Single-cell RNA-seq & Dynamic Modeling](https://github.com/Prenauer/OR7A10_NK_GOF_2025/tree/main/6_SCT)
 
 ---
 
-## ▶️ General Execution Notes
+## ▶️ General Notes
 
 - Scripts and notebooks must be run **in the order specified** within each repository README.
 - Input data paths are defined **inside each script/notebook**.
@@ -160,7 +127,7 @@ Lei Peng#, and Sidi Chen#.
 
 ## 📄 License
 
-All repositories are released under the **MIT License**, unless otherwise noted.
+All repositories are released under the **MIT License**.
 
 ---
 
