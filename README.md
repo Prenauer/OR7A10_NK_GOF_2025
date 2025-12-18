@@ -21,7 +21,7 @@ Code is **not maintained** beyond the manuscript version.
 ### 1️⃣ SAMBA (Manuscript Version)
 
 **Scope**
-- Signature Activity Modeling and Bayesian Analysis (SAMBA)
+- Screen Analysis Method with emperical Bayes estimation for Aggregated gene scoring (SAMBA)
 - Manuscript implementation only
 
 ⚠️ **Important**
