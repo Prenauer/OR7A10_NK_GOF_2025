@@ -26,10 +26,22 @@ The attached script (**`01_CRISPRa_ScreenAnalysis.Rmd`**) performs end-to-end an
 
 ```text
 .
-├── 01_CRISPRa_ScreenAnalysis.Rmd
-│   └── CRISPRa screen preprocessing, guide/gene analysis, and rank-plot visualization
+├── Data
+│   └─ NK_Screen_LY3_CountTable.txt
+│   └─ NK_Screen_LY3_GeneLevelResults.txt
+│   └─ NK_Screen_LY3_GuideLevelResults.txt
+│   └─ NK_Screen_LY3_lcpm.txt
+│   └─ NK_Screen_LY3_mds_plotdata.txt
 │
-└── README.md
+├── 01_CRISPRa_ScreenAnalysis.md
+├── 01_CRISPRa_ScreenAnalysis.Rmd
+│   └─── CRISPRa screen preprocessing, guide/gene analysis, and rank-plot visualization
+│
+├── LICENSE
+│
+├── README.md
+│
+└── Samba_official_V1.1.R
 ```
 
 ---
