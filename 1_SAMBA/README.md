@@ -9,7 +9,7 @@
 
 ## Overview
 
-This directory contains the **exact version of the SAMBA (Statistical Analysis of Multiplexed Barcode Assays) code used in the manuscript**:
+This directory contains the **exact version of the SAMBA (Screen Analysis Method with emperical Bayes estimation for Aggregated gene scoring) code used in the manuscript**:
 
 > **OR7A10 GPCR engineering boosts CAR-NK therapy against solid tumors**
 
@@ -31,8 +31,6 @@ It reflects the implementation and defaults used at the time of manuscript submi
 - Robust null-distribution construction
 - Flexible design matrices and contrasts
 - Built-in preprocessing, normalization, and dispersion estimation
-
-This implementation is optimized for **CRISPRa/i and knockout screens** with replicated designs.
 
 ---
 
