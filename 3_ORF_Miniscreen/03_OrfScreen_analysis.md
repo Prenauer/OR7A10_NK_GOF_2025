@@ -1,0 +1,440 @@
+### Load libraries and prepare environment
+
+    ############################
+    ## Set working directory
+    ############################
+
+    setwd('3_ORF_Miniscreen')
+
+    ############################
+    ## Load required libraries
+    ############################
+
+    library(dplyr)
+    library(stringr)
+    library(ggplot2)
+    library(ggrastr)
+    library(stringr)
+
+    ## Source samba scripts for version 1.1
+    source('Scripts/Samba_official_V1.1.R')
+
+### UMI-level analysis
+
+    ############################
+    ## Load and filter input data
+    ############################
+
+    ## Read sgRNA count matrix
+    d <- read.delim('Data/data_counts.txt')
+
+    ## Remove plasmid control samples from analysis
+    d <- d[, !grepl('ctrl_plasmid', colnames(d))]
+
+    ############################
+    ## Linear time model (time as numeric)
+    ############################
+
+    ## Parse sample metadata from column names
+    design <- str_split(colnames(d)[3:ncol(d)], '_', simplify = TRUE) %>% 
+        data.frame()
+
+    ## Assign column names to design dataframe
+    colnames(design) <- c('type','donor','time','rep')
+
+    ## Convert time to numeric variable
+    design$time <- substr(design$time, 2, 2) %>% as.integer()
+
+    ## Construct design matrix with numeric time and donor
+    design <- model.matrix(~ time + donor, data = design)
+
+    ## Preprocess data for SAMBA using linear time design
+    dge <- Preprocess_Samba(data = d, design = design)
+
+    ## Perform guide-level analysis using linear time coefficient
+    r.umi <- data.frame(
+      analysis = 'linear-time',
+      Analyze_Samba_Guides(dge = dge, coefficient = 'time')
+    )
+
+    ############################
+    ## Categorical time model
+    ############################
+
+    ## Parse sample metadata from column names
+    design <- str_split(colnames(d)[3:ncol(d)], '_', simplify = TRUE) %>% 
+        data.frame()
+
+    ## Assign column names to design dataframe
+    colnames(design) <- c('type','donor','time','rep')
+
+    ## Convert time to categorical factor
+    design$time <- factor(design$time)
+
+    ## Construct design matrix with categorical time and donor
+    design <- model.matrix(~ time + donor, data = design)
+
+    ## Preprocess data for SAMBA using categorical time design
+    dge <- Preprocess_Samba(data = d, design = design)
+
+    ## Perform guide-level analysis for day 3 timepoint
+    r.umi <- rbind(
+      r.umi,
+      data.frame(
+        analysis = 'time_d3',
+        Analyze_Samba_Guides(dge = dge, coefficient = 'timet3')
+      )
+    )
+
+    ## Perform guide-level analysis for day 6 timepoint
+    r.umi <- rbind(
+      r.umi,
+      data.frame(
+        analysis = 'time_d6',
+        Analyze_Samba_Guides(dge = dge, coefficient = 'timet6')
+      )
+    )
+
+    ############################
+    ## Save UMI-level results
+    ############################
+
+    ## Order UMI-level results by test statistic
+    r.umi <- r.umi[order(-r.umi$Statistic),]
+
+    ## Write UMI-level SAMBA results to file
+    write.table(
+      r.umi,
+      'Data/samb_umiRes.txt',
+      sep = '\t',
+      quote = FALSE,
+      row.names = FALSE
+    )
+
+### Gene-level analysis results
+
+    ############################
+    ## Load UMI-level results
+    ############################
+
+    ## Read UMI-level SAMBA results
+    r.umi <- read.delim('Data/samb_umiRes.txt')
+
+    ############################
+    ## Aggregate UMI results to gene level
+    ############################
+
+    ## Compute gene-level results for day 6 comparison
+    r3 <- Analyze_Samba_Genes(
+      r.umi[which(r.umi$analysis == 'time_d6'), -1],
+      ntc.as.null.dist = FALSE,
+      score.method = 'GeneScore'
+    )
+
+    ## Annotate analysis type
+    r3$analysis <- 'time_d6'
+
+    ## Compute gene-level results for day 3 comparison
+    r2 <- Analyze_Samba_Genes(
+      r.umi[which(r.umi$analysis == 'time_d3'), -1],
+      ntc.as.null.dist = FALSE,
+      score.method = 'GeneScore'
+    )
+
+    ## Annotate analysis type
+    r2$analysis <- 'time_d3'
+
+    ## Compute gene-level results for linear time model
+    r1 <- Analyze_Samba_Genes(
+      r.umi[which(r.umi$analysis == 'linear-time'), -1],
+      ntc.as.null.dist = FALSE,
+      score.method = 'GeneScore'
+    )
+
+    ## Annotate analysis type
+    r1$analysis <- 'linear-time'
+
+    ## Combine all gene-level result tables
+    r <- do.call(rbind, list(r1, r2, r3))
+
+    ############################
+    ## Annotate gene-level results
+    ############################
+
+    ## Reload gene-level results table
+    r <- read.delim('Data/samb_geneRes.txt')
+
+    ## Define null control gene annotations
+    null.ctrls <- structure(
+      rep('Ctrl', 5),
+      names = c('ECFP','EYFP','EGFP','BFP2','RFP')
+    )
+
+    ## Define top-hit gene annotations
+    top.hits <- structure(
+      rep('TopHits', 5),
+      names = c(
+        'OR7A10.NM_001005190',
+        'APLN.NM_017413',
+        'CYB5B.NM_030579',
+        'LRRC23.NM_006992',
+        'HPRT1.NM_000194'
+      )
+    )
+
+    ## Assign gene type labels based on control mapping
+    r$Gene_type <- null.ctrls[r$Gene]
+
+    ## Assign default gene type to non-controls
+    r$Gene_type[is.na(r$Gene_type)] <- 'Gene'
+
+    ############################
+    ## Adjust p-values genome-wide
+    ############################
+
+    ## Compute genome-wide adjusted q-values per analysis
+    r <- mutate(
+      r,
+      .by = 'analysis',
+      qval_global_pos = p.adjust(pval_pos, n = 89843)
+    )
+
+    ## Reorder columns for output
+    r <- r[, c(10:11, 1:4, 12, 5:9)]
+
+    ## Save adjusted gene-level results
+    write.table(
+      r,
+      'Data/samb_geneResAdj.txt',
+      sep = '\t',
+      quote = FALSE,
+      row.names = FALSE
+    )
+
+### Plot results
+
+    ############################
+    ## Gene-level volcano plots
+    ############################
+
+    ## Load adjusted gene-level results
+    r <- read.delim('Data/samb_geneResAdj.txt')
+
+    ## Generate plots for each analysis type
+    plist <- lapply(unique(r$analysis), function(analysis.type){
+
+      ## Define color palette for gene types
+      cols <- c(Gene = '#B2B2B2', Ctrl = '#496AB4')
+
+      ## Set factor levels for gene type
+      r$Gene_type <- factor(r$Gene_type, levels = c('Gene','Ctrl','TopHits'))
+
+      ## Order data for plotting
+      r <- r[order(r$Gene_type),]
+
+      ## Define reference line segments for volcano plot
+      line_segments <- data.frame(
+        x1 = c(min(r[which(r$analysis == analysis.type), 'score_pos']), -0.5, 0.5, 0.5),
+        x2 = c(-0.5, -0.5, 0.5, max(r[which(r$analysis == analysis.type), 'score_pos'])),
+        y1 = c(
+          2,
+          2,
+          max(-log10(r[which(r$analysis == analysis.type), 'qval_pos'])),
+          2
+        ),
+        y2 = c(
+          2,
+          max(-log10(r[which(r$analysis == analysis.type), 'qval_pos'])),
+          2,
+          2
+        )
+      )
+
+      ## Create dashed reference lines
+      line_segments <- geom_segment(
+        data = line_segments,
+        aes(x = x1, xend = x2, y = y1, yend = y2),
+        linetype = 'dashed',
+        color = 'gray20'
+      )
+
+      ## Build volcano plot
+      ggplot(
+        r[which(r$analysis == analysis.type),],
+        aes(x = score_pos, y = -log10(qval_pos))
+      ) +
+        line_segments +
+        geom_point_rast(
+          size = 2,
+          stroke = 0.2,
+          shape = 21,
+          aes(fill = Gene_type),
+          color = 'gray20'
+        ) +
+        scale_fill_manual(values = cols) +
+        theme_classic() +
+        theme(legend.position = 'bottom') +
+        ggrepel::geom_text_repel(
+          size = 2.5,
+          min.segment.length = 0,
+          segment.size = 0.2,
+          data = r[
+            which(
+              r$analysis == analysis.type &
+              r$qval_pos < 0.01 &
+              abs(r$score_pos) > 0.5
+            ),
+          ],
+          aes(label = str_split_i(Gene, '\\.', 1))
+        ) +
+        labs(
+          x = 'Log2 fold-change',
+          y = 'Adj. p value',
+          title = analysis.type
+        )
+    })
+
+    ## Combine gene-level volcano plots
+    p <- cowplot::plot_grid(
+      plotlist = plist,
+      align = 'hv',
+      axis = 'lbt',
+      nrow = 1
+    )
+
+    ## Save gene-level volcano plot figure
+    ggsave(
+      plot = p,
+      'Figures/enr_gene_volcano.pdf',
+      height = 2.5,
+      width = 3 * 3,
+      scale = 1.25
+    )
+
+### Violin plots of OR7A10 and controls
+
+    ############################
+    ## Prepare normalized data
+    ############################
+
+    ## Read sgRNA count matrix
+    d <- read.delim('Data/data_counts.txt')
+
+    ## Define genes of interest
+    glist <- c("OR7A10", c('RFP','EGFP','ECFP','EYFP','BFP2'))
+
+    ## Apply variance-stabilizing transformation
+    d2 <- data.frame(
+      d[,1:2],
+      DESeq2::varianceStabilizingTransformation(
+        as.matrix(d[,3:ncol(d)]),
+        fitType = 'local'
+      )
+    )
+
+    ## Subset data to genes of interest
+    d2 <- d2[which(d2$Gene %in% glist),]
+
+    ############################
+    ## Reshape and annotate data
+    ############################
+
+    ## Convert wide-format data to long format
+    d2 <- reshape2::melt(d2)
+
+    ## Rename columns for clarity
+    colnames(d2) <- c('sgRNA','Gene','id','value')
+
+    ## Collapse fluorescent controls into single category
+    d2$Gene[which(d2$Gene %in% c('RFP','EGFP','ECFP','EYFP','BFP2'))] <- 'Ctrl'
+
+    ## Construct experimental group labels
+    d2$group <- apply(
+      str_split(d2$id, '_', simplify = TRUE)[,c(1,3)],
+      1,
+      paste0,
+      collapse = '_'
+    )
+
+    ## Set gene factor levels
+    d2$Gene <- factor(d2$Gene, levels = c('OR7A10','Ctrl'))
+
+    ## Set group factor levels
+    d2$group <- factor(d2$group, levels = unique(sort(d2$group)))
+
+    ## Order data for plotting
+    d2 <- d2[with(d2, order(group, Gene)),]
+
+    ## Fix sample factor ordering
+    d2$id <- factor(d2$id, levels = as.character(unique(d2$id)))
+
+    ############################
+    ## Compute summary statistics
+    ############################
+
+    ## Compute per-sample mean and standard deviation
+    d3 <- reframe(
+      d2,
+      .by = c('Gene','id','group'),
+      y = mean(value),
+      ymin = mean(value) - sd(value),
+      ymax = mean(value) + sd(value)
+    )
+
+    ############################
+    ## Generate violin-style plots
+    ############################
+
+    ## Construct beeswarm and error bar plot
+    p <- ggplot(d2, aes(x = id, y = y, color = group, fill = group)) + 
+      geom_point_rast(
+        size = 0.6,
+        shape = 21,
+        aes(y = value, fill = group),
+        position = ggbeeswarm::position_quasirandom(),
+        color = 'gray20'
+      ) +
+      geom_point_rast(
+        size = 0.1,
+        aes(fill = group, x = id, y = value),
+        position = ggbeeswarm::position_quasirandom()
+      ) +
+      geom_hline(
+        yintercept = 1,
+        linetype = 'dashed',
+        size = 0.5,
+        color = 'gray30'
+      ) +
+      geom_errorbar(
+        data = d3,
+        aes(ymin = ymin, ymax = ymax, y = y),
+        position = position_dodge(width = 0.9)
+      ) +
+      geom_point(
+        data = d3,
+        aes(x = id, y = y),
+        position = position_dodge(width = 0.9)
+      ) +
+      facet_wrap(~ Gene, ncol = 1) +
+      scale_color_manual(
+        values = c(
+          ctrl_t0 = '#B2B2B2',
+          nk_t0   = "#FCF171F1",
+          nk_t3   = "#F48841FF",
+          nk_t6   = "firebrick"
+        )
+      ) +
+      theme_classic() +
+      theme(
+        legend.position = 'bottom',
+        axis.text.x = element_text(angle = 90)
+      )
+
+    ## Save violin-style plot
+    ggsave(
+      plot = p,
+      filename = 'Figures/res_umi-by-sample.pdf',
+      height = 3,
+      width = 3.75,
+      scale = 1.5
+    )

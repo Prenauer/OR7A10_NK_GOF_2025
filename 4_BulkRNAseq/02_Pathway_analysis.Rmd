@@ -1,0 +1,128 @@
+---
+title: "02 Pathway analyses for bulk-RNA-seq"
+author: "Kaiyuan Tang"
+date: "2025-09-08"
+description: "This script runs pathway analyses for the RNA-seq data."
+output: html_document
+---
+  
+```{r include = FALSE}
+knitr::opts_chunk$set(message = F, eval=F)
+```
+
+```{r }
+# Load packages required for data manipulation
+library(dplyr)
+library(tibble)
+
+# Load packages required for GSEA and GO analysis
+library(clusterProfiler)
+library(GSEABase)
+library(org.Hs.eg.db)
+library(DOSE)
+
+# Load packages required for plotting
+library(ggplot2)
+library(enrichplot)
+
+############################
+# Stim 24 hr vs 0 hr main effect
+############################
+
+# Read differential expression results for stimulation comparison
+genes <- read.csv("RNAseq_Data/DEG_stim_24hr_vs_0hr_padj005_LFC05.csv")
+
+# Extract log2 fold-change values as a numeric vector
+gene_list <- genes$log2FoldChange
+
+# Assign gene symbols as names of the vector
+names(gene_list) <- genes$X
+
+# Sort genes by decreasing fold change for GSEA
+gene_list <- sort(gene_list, decreasing = TRUE)
+
+# Run GSEA using GO Biological Process ontology
+gse <- gseGO(
+  geneList      = gene_list,
+  ont           = "BP",
+  keyType       = "SYMBOL",
+  minGSSize     = 3,
+  maxGSSize     = 800,
+  pvalueCutoff  = 0.05,
+  verbose       = TRUE,
+  OrgDb         = org.Hs.eg.db
+)
+
+# Generate dot plot split by enrichment direction
+stim <- dotplot(gse, showCategory = 6, split = ".sign") +
+  facet_grid(. ~ .sign) +
+  ggtitle("Stim 24hr vs 0hr Main Effect Pathway Analysis") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+  )
+
+# Save stimulation pathway analysis plot
+ggsave(
+  filename = "Pathway_Stim_Main_Effect.pdf",
+  plot     = stim,
+  width    = 9,
+  height   = 8
+)
+
+############################
+# OE main effect within stimulation subset
+############################
+
+# Read differential expression results for OE comparison
+genes <- read.csv("RNAseq_Data/DEG_subset_OE_OR7A10_vs_OR7A10Stop_padj005_LFC05.csv")
+
+# Extract log2 fold-change values as a numeric vector
+gene_list <- genes$log2FoldChange
+
+# Assign gene symbols as names of the vector
+names(gene_list) <- genes$X
+
+# Sort genes by decreasing fold change for GSEA
+gene_list <- sort(gene_list, decreasing = TRUE)
+
+# Run GSEA using GO Biological Process ontology
+gse <- gseGO(
+  geneList      = gene_list,
+  ont           = "BP",
+  keyType       = "SYMBOL",
+  minGSSize     = 3,
+  maxGSSize     = 800,
+  pvalueCutoff  = 0.05,
+  verbose       = TRUE,
+  OrgDb         = org.Hs.eg.db
+)
+
+# Generate dot plot split by enrichment direction
+OE <- dotplot(gse, showCategory = 10, split = ".sign") +
+  facet_grid(. ~ .sign) +
+  ggtitle("OE OR7A10OE vs OR7A10Stop Main Effect Pathway Analysis") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
+  )
+
+# Save OE pathway analysis plot
+ggsave(
+  filename = "Pathway_OE_Main_Effect.pdf",
+  plot     = OE,
+  width    = 9,
+  height   = 8
+)
+
+############################
+# GSEA enrichment curve for a selected pathway
+############################
+
+# Plot enrichment curve for the 15th ranked gene set
+gseaplot(
+  gse,
+  geneSetID = 15,
+  title     = gse$Description[15],
+  by        = "all"
+)
+
+```

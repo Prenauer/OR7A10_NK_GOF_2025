@@ -1,0 +1,198 @@
+### Load libraries and prepare environment
+
+    ############################
+    ## Set working directory
+    ############################
+
+    setwd('2_CRISPRa_screen')
+
+    ############################
+    ## Load required libraries
+    ############################
+
+    library(dplyr)
+    library(stringr)
+    library(ggplot2)
+    library(ggrastr)
+    library(stringr)
+
+    ## Source samba scripts for version 1.1
+    source('Scripts/Samba_official_V1.1.R')
+
+### Analysis
+
+    ############################
+    ## 1. Load and format count data
+    ############################
+
+    ## Read merged sgRNA count table
+    df <- read.delim('count_merge.txt')
+
+    ## Parse guide IDs to extract gene identifiers
+    g <- stringr::str_split(df$guide_ID, '\\.', simplify = TRUE)[,1:2]
+    g <- paste0(g[,1], '.', g[,2])
+
+    ## Assemble formatted count dataframe
+    df <- data.frame(
+      sgRNA = df$guide_ID,
+      Gene  = g,
+      df[,2:16]
+    )
+
+    ## Save formatted count table for downstream use
+    write.table(
+      df,
+      'NK_Screen_LY3_CountTable.txt',
+      sep = '\t',
+      row.names = FALSE,
+      quote = FALSE
+    )
+
+    ############################
+    ## 2. Define experimental design
+    ############################
+
+    ## Define binary screen condition (Screen vs Control)
+    Screen <- c(rep(1, 12), rep(0, 3))
+
+    ## Construct design matrix for SAMBA analysis
+    design <- model.matrix(~ Screen)
+
+    ############################
+    ## 3. Run SAMBA screen analysis
+    ############################
+
+    ## Preprocess data using SAMBA pipeline
+    dge <- Preprocess_Samba(
+      data   = df,
+      design = design
+    )
+
+    ## Perform guide-level differential analysis
+    sgRes <- Analyze_Samba_Guides(
+      dge          = dge,
+      coefficient = 'Screen',
+      file.prefix = 'NK_Screen_LY3'
+    )
+
+    ## Aggregate guide-level results to gene-level statistics
+    geneRes <- Analyze_Samba_Genes(
+      sgRes               = sgRes,
+      ntc.as.null.dist    = FALSE,
+      score.method        = 'GeneScore',
+      file.prefix         = 'NK_Screen_LY3'
+    )
+
+    ## Save gene-level results
+    write.table(
+      geneRes,
+      'NK_Screen_LY3_GeneLevelResults.txt',
+      sep = '\t',
+      row.names = FALSE,
+      quote = FALSE
+    )
+
+    ############################
+    ## 4. Prepare data for rank / volcano-style plot
+    ############################
+
+    ## Use sgRNA results as null distribution
+    nullData <- sgRes
+
+    ## Compute -log10 FDR for visualization
+    nullData$logFDR <- -log10(nullData$FDR)
+
+    ## Determine FDR threshold using 90th percentile of z-scores
+    fdr.threshold <- data.frame(
+      zscore = quantile(nullData$zscore, 0.90),
+      logFDR = 0
+    )
+
+    ## Initialize color column (used by ggplot downstream)
+    nullData$color <- NA
+
+    ## Compute -log10 adjusted p-values at gene level
+    geneRes$logFDR <- -log10(geneRes$qval_pos)
+
+    ## Order genes by significance
+    geneRes <- geneRes[order(geneRes$logFDR, decreasing = TRUE),]
+
+    ## Replace missing values for plotting
+    geneRes$logFDR[is.na(geneRes$logFDR)] <- 0
+
+    ## Compute z-scores for gene-level scores
+    geneRes$zscore <- scale(geneRes$score_pos, center = FALSE)
+
+    ## Extract gene symbols for labeling
+    geneRes$Label <- stringr::str_split(
+      geneRes$Gene, '\\.', simplify = TRUE
+    )[,1]
+
+    ############################
+    ## 5. Select genes for plot annotation
+    ############################
+
+    ## Select top-ranking genes for labeling
+    df.label <- head(geneRes, 16)
+
+    ## Assign relative label sizes
+    df.label$size <- c(rep(2, 8), rep(1, 8))
+
+    ############################
+    ## 6. Generate rank / volcano-style plot
+    ############################
+
+    ## Construct rank plot with null distribution and gene labels
+    p <- ggplot(geneRes, aes(x = zscore, y = logFDR)) +
+      ggrastr::rasterize(
+        ggpointdensity::geom_pointdensity(size = 1),
+        dpi = 300
+      ) +
+      viridis::scale_color_viridis() +
+      ylim(-0.4, 10) +
+      geom_rug(
+        data = nullData,
+        aes(x = zscore),
+        sides = 'b',
+        alpha = 0.3,
+        color = 'gray10',
+        outside = FALSE
+      ) +
+      geom_rug(
+        data = fdr.threshold,
+        aes(x = zscore),
+        sides = 'b',
+        color = 'firebrick',
+        outside = FALSE
+      ) +
+      geom_segment(
+        x    = min(geneRes$zscore, na.rm = TRUE),
+        xend = 5,
+        y    = 2,
+        yend = 2,
+        linetype = 'longdash',
+        alpha    = 0.5
+      ) +
+      ggrepel::geom_text_repel(
+        data = df.label,
+        aes(label = Label, size = size),
+        fontface = 'italic',
+        segment.alpha = 0.8,
+        segment.size  = 0.2,
+        min.segment.length = 0,
+        max.overlaps = 30
+      ) +
+      scale_size_area(range = c(2, 3), guide = 'none') +
+      labs(
+        x = 'Gene score',
+        y = 'Adj. p value (-log10)'
+      ) +
+      cowplot::theme_cowplot()
+
+    ## Save rank plot to file
+    ggsave(
+      plot    = p,
+      filename = 'NK_Screen_LY_volcano.pdf',
+      height  = 3.75,
+      width   = 5
+    )

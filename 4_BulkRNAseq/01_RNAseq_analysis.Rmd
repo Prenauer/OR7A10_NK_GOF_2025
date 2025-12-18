@@ -1,0 +1,262 @@
+---
+title: "01 Bulk-RNA-seq Analysis"
+author: "Kaiyuan Tang"
+date: "2025-09-08"
+description: "This script analyzes the RNA-seq data with the DESeq2 packages."
+output: html_document
+---
+  
+```{r include = FALSE}
+knitr::opts_chunk$set(message = F, eval=F)
+```
+
+```{r }
+############################
+# Load required libraries
+############################
+
+library(dplyr)
+library(tidyverse)
+library(purrr)
+library(stringr)
+library(data.table)
+library(ggrepel)
+library(pheatmap)
+library(DESeq2)
+library(ggrastr)
+library(ggsci)
+
+############################
+# Set working directory
+############################
+
+# Set working directory to RNA-seq project folder
+setwd("4_BulkRNAseq")
+
+############################
+# Read and filter count matrix
+############################
+
+# Read raw RNA-seq count matrix
+count_raw <- fread(file = "RNAseq_DataNKGOF_RNAseq_Count_Matrix.txt") %>%
+  # Convert gene column to rownames
+  column_to_rownames(var = "gene")
+
+# Filter genes expressed above threshold in at least one sample
+count <- count_raw[rowSums(count_raw[, 1:36] > 20) > 0, ]
+
+# Subset count matrix to stimulated samples only
+count_filter <- count %>%
+  select(
+    "77-24_Rep1", "77-24_Rep2", "77-24_Rep3",
+    "77b-24_Rep1", "77b-24_Rep2","77b-24_Rep3",
+    "79-24_Rep1","79-24_Rep2", "79-24_Rep3",
+    "79b-24_Rep1", "79b-24_Rep2", "79b-24_Rep3",
+    "90-24_Rep1", "90-24_Rep2", "90-24_Rep3",
+    "90b-24_Rep1", "90b-24_Rep2", "90b-24_Rep3"
+  )
+
+############################
+# Construct metadata
+############################
+
+# Extract sample names for full dataset
+sample_name <- colnames(count)
+
+# Extract sample names for stimulated subset
+sample_name1 <- colnames(count_filter)
+
+# Define experimental condition labels
+condition <- c(
+  rep("HER2CAR_OR7A10_0hr", 3), rep("HER2CAR_OR7A10_24hr", 3),
+  rep("HER2CAR_OR7A10Stop_0hr", 3), rep("HER2CAR_OR7A10Stop_24hr", 3),
+  rep("OR7A10_0hr", 3), rep("OR7A10_24hr", 3),
+  rep("OR7A10Stop_0hr", 3), rep("OR7A10Stop_24hr", 3),
+  rep("tHER2CAR_OR7A10_0hr", 3), rep("tHER2CAR_OR7A10_24hr", 3),
+  rep("tHER2CAR_OR7A10Stop_0hr", 3), rep("tHER2CAR_OR7A10Stop_24hr", 3)
+)
+
+# Define condition labels for stimulated subset
+condition1 <- c(
+  rep("HER2CAR_OR7A10_24hr", 3), rep("HER2CAR_OR7A10Stop_24hr", 3),
+  rep("OR7A10_24hr", 3), rep("OR7A10Stop_24hr", 3),
+  rep("tHER2CAR_OR7A10_24hr", 3), rep("tHER2CAR_OR7A10Stop_24hr", 3)
+)
+
+# Define stimulation timing
+stim <- rep(c("0hr", "24hr"), each = 3, times = 6)
+
+# Define CAR status
+CAR <- c(rep("HER2CAR", 12), rep("NoCAR", 12), rep("tHER2CAR", 12))
+
+# Define OR7A10 overexpression status
+OE <- rep(c("OR7A10", "OR7A10Stop"), each = 6, times = 3)
+
+# Define stimulated subset factors
+stim1 <- rep("24hr", 18)
+CAR1 <- c(rep("HER2CAR", 6), rep("NoCAR", 6), rep("tHER2CAR", 6))
+OE1 <- rep(c("OR7A10", "OR7A10Stop"), each = 3, times = 3)
+
+# Create metadata dataframe for full dataset
+meta <- data.frame(cbind(sample_name, condition, stim, CAR, OE)) %>%
+  column_to_rownames(var = "sample_name")
+
+# Create metadata dataframe for stimulated subset
+meta1 <- data.frame(cbind(sample_name1, condition1, stim1, CAR1, OE1)) %>%
+  column_to_rownames(var = "sample_name1")
+
+# Convert metadata columns to factors
+meta[] <- lapply(meta, as.factor)
+meta1[] <- lapply(meta1, as.factor)
+
+############################
+# Create DESeq2 objects
+############################
+
+# Create DESeq2 object with full interaction model
+dds_inter <- DESeqDataSetFromMatrix(
+  countData = count,
+  colData   = meta,
+  design    = ~ OE * CAR * stim
+)
+
+# Create DESeq2 object for stimulated subset
+dds_filter <- DESeqDataSetFromMatrix(
+  countData = count_filter,
+  colData   = meta1,
+  design    = ~ OE1 * CAR1
+)
+
+############################
+# Normalize counts
+############################
+
+# Estimate size factors for full dataset
+dds_inter <- estimateSizeFactors(dds_inter)
+
+# Estimate size factors for stimulated subset
+dds_filter <- estimateSizeFactors(dds_filter)
+
+# Extract normalized counts for stimulated subset
+NKGOF_normalized_count1 <- counts(dds_filter, normalized = TRUE)
+
+############################
+# QC: correlation and PCA
+############################
+
+# Apply variance stabilizing transformation
+vsd <- vst(dds_inter, blind = TRUE)
+
+# Extract transformed matrix
+vsd_mat <- assay(vsd)
+
+# Compute sample correlation matrix
+vsd_cor <- cor(vsd_mat)
+
+# Apply VST to stimulated subset
+vsd1 <- vst(dds_filter, blind = TRUE)
+
+# Extract transformed matrix
+vsd_mat1 <- assay(vsd1)
+
+# Compute correlation matrix
+vsd_cor1 <- cor(vsd_mat1)
+
+# Plot correlation heatmaps
+pheatmap(vsd_cor, annotation = dplyr::select(meta, condition))
+pheatmap(vsd_cor1, annotation = dplyr::select(meta1, condition1))
+
+############################
+# PCA plots
+############################
+
+# PCA colored by stimulation
+pca_stim <- plotPCA(vsd, intgroup = "stim") +
+  theme_classic() +
+  scale_color_npg() +
+  labs(title = "PCA Plot by Stimulation")
+
+# PCA colored by OE
+pca_OE <- plotPCA(vsd, intgroup = "OE") +
+  theme_classic() +
+  scale_color_npg() +
+  labs(title = "PCA Plot by OE")
+
+# PCA colored by CAR
+pca_CAR <- plotPCA(vsd, intgroup = "CAR") +
+  theme_classic() +
+  scale_color_npg() +
+  labs(title = "PCA Plot by CAR Construct")
+
+# PCA for stimulated subset
+subset <- plotPCA(vsd1, intgroup = "OE1") +
+  theme_classic() +
+  scale_color_npg() +
+  labs(title = "PCA Plot by OE (Subset)")
+
+# Save PCA plots
+ggsave("PCA_stim.pdf", pca_stim, width = 4, height = 4)
+ggsave("PCA_OE.pdf", pca_OE, width = 4, height = 4)
+ggsave("PCA_CAR.pdf", pca_CAR, width = 4, height = 4)
+ggsave("PCA_OE_subset.pdf", subset, width = 4, height = 4)
+
+############################
+# Differential expression analysis
+############################
+
+# Relevel factors for full dataset
+dds_inter$CAR  <- relevel(dds_inter$CAR,  ref = "tHER2CAR")
+dds_inter$stim <- relevel(dds_inter$stim, ref = "0hr")
+dds_inter$OE   <- relevel(dds_inter$OE,   ref = "OR7A10Stop")
+
+# Run DESeq2 model
+dds_inter <- DESeq(dds_inter)
+
+# Relevel factors for stimulated subset
+dds_filter$CAR1 <- relevel(dds_filter$CAR1, ref = "tHER2CAR")
+dds_filter$OE1  <- relevel(dds_filter$OE1,  ref = "OR7A10Stop")
+
+# Run DESeq2 model for subset
+dds_filter <- DESeq(dds_filter)
+
+############################
+# LFC shrinkage and curation
+############################
+
+# Shrink log2 fold changes
+resLFC_stim <- lfcShrink(dds_inter, coef = "stim_24hr_vs_0hr", type = "apeglm")
+resLFC_OE1  <- lfcShrink(dds_filter, coef = "OE1_OR7A10_vs_OR7A10Stop", type = "apeglm")
+resLFC_int  <- lfcShrink(dds_filter, coef = "OE1OR7A10.CAR1HER2CAR", type = "apeglm")
+
+# Define result curation function
+result_curation <- function(res, lfc.thresh = 0.5, p.thresh = 0.05) {
+  res <- res[order(res$pvalue), ]
+  df <- as.data.frame(res) %>% filter(complete.cases(.))
+  df$significant <- "Not Significant"
+  df[df$padj < p.thresh & df$log2FoldChange >  lfc.thresh, "significant"] <- "Up"
+  df[df$padj < p.thresh & df$log2FoldChange < -lfc.thresh, "significant"] <- "Down"
+  return(df)
+}
+
+# Curate results
+resLFC_stim_df <- result_curation(resLFC_stim)
+resLFC_OE1_df  <- result_curation(resLFC_OE1)
+resLFC_int_df  <- result_curation(resLFC_int)
+
+############################
+# Save results
+############################
+
+# Write differential expression tables
+write.csv(resLFC_stim_df, "RNAseq_Data/DEG_stim_24hr_vs_0hr.csv")
+write.csv(resLFC_stim_df[resLFC_stim_df$significant != "Not Significant", ],
+          "RNAseq_Data/DEG_stim_24hr_vs_0hr_padj005_LFC05.csv")
+
+write.csv(resLFC_OE1_df, "RNAseq_Data/DEG_subset_OE_OR7A10_vs_OR7A10Stop.csv")
+write.csv(resLFC_OE1_df[resLFC_OE1_df$significant != "Not Significant", ],
+          "RNAseq_Data/DEG_subset_OE_OR7A10_vs_OR7A10Stop_padj005_LFC05.csv")
+
+write.csv(resLFC_int_df,
+          "RNAseq_Data/DEG_subset_Interaction_OE1OR7A10.CAR1HER2CAR.csv")
+
+```

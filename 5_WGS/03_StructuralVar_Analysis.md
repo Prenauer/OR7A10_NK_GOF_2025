@@ -1,0 +1,291 @@
+    ############################
+    # Load required libraries
+    ############################
+
+    library(vcfR)
+    library(ape)
+    library(dplyr)
+    library(CMplot)
+    library(tidyverse)
+    library(data.table)
+
+    ############################
+    # Set working directory
+    ############################
+
+    # Set working directory to WGS analysis folder
+    setwd("5_WGS")
+
+    ############################
+    # Read VCF files (remove meta headers)
+    ############################
+
+    # Read OE indel variants while removing VCF metadata lines
+    OE <- fread("grep -v '^##' WGS_Data/Donor0958_OR7A10OE_Unique_Indel_Variant.vcf") %>%
+      # Rename chromosome column for consistency
+      rename(Chromosome = "CHROM")
+
+    # Read Stop indel variants while removing VCF metadata lines
+    Stop <- fread("grep -v '^##' WGS_Data/Donor0958_OR7A10Stop_Unique_Indel_Variant.vcf") %>%
+      # Rename chromosome column for consistency
+      rename(Chromosome = "CHROM")
+
+    ############################
+    # Create genomic bins
+    ############################
+
+    # Define chromosome order for plotting
+    chrom_order <- c(paste0("chr", 1:22), "chrX", "chrY")
+
+    # Read chromosome size information
+    chrom_info <- fread("hg38.chrom.sizes", 
+                        col.names = c("Chromosome", "Length")) %>%
+      # Retain autosomes and sex chromosomes only
+      slice_head(n = 24) %>%
+      # Enforce chromosome ordering
+      mutate(Chromosome = factor(Chromosome, levels = chrom_order)) %>%
+      # Sort chromosomes
+      arrange(Chromosome)
+
+    # Define genomic bin size (10 Mb)
+    segment_size <- 1e7
+
+    # Generate chromosome vector repeated by bin count
+    chromosome <- rep(chrom_info$Chromosome,
+                      ceiling(chrom_info$Length / segment_size))
+
+    # Initialize start and end position vectors
+    start <- c()
+    end <- c()
+
+    # Generate genomic bin coordinates
+    for (i in 1:nrow(chrom_info)) {
+      # Generate start positions for bins
+      start <- c(start, seq(0, chrom_info$Length[i], by = segment_size))
+      
+      # Generate end positions for bins
+      sequence <- seq(segment_size, chrom_info$Length[i], by = segment_size)
+      end <- c(end, sequence, chrom_info$Length[i])
+    }
+
+    # Combine genomic bin coordinates into dataframe
+    segment <- data.frame(chromosome, start, end)
+
+    ############################
+    # Count OE indel variants per bin
+    ############################
+
+    # Initialize OE segment count table
+    OE_seg <- segment %>% mutate(count = 0)
+
+    # Iterate through OE variants
+    for (i in 1:nrow(OE)) {
+      # Extract chromosome
+      chr <- OE$Chromosome[i]
+      
+      # Extract genomic position
+      pos <- OE$POS[i]
+      
+      # Extract read depth from VCF INFO field
+      depth <- as.numeric(
+        str_split(str_split(OE$`Donor0958_OR7A10OE`[i], ":")[[1]][2], ",")[[1]][2]
+      )
+      
+      # Print chromosome for progress tracking
+      print(chr)
+      
+      # Increment count for matching genomic bin
+      OE_seg[chromosome == chr & start < pos & end > pos, "count"] <-
+        OE_seg[chromosome == chr & start < pos & end > pos, "count"] + 1
+    }
+
+    ############################
+    # Count Stop indel variants per bin
+    ############################
+
+    # Initialize Stop segment count table
+    Stop_seg <- segment %>% mutate(count = 0)
+
+    # Iterate through Stop variants
+    for (i in 1:nrow(Stop)) {
+      # Extract chromosome
+      chr <- Stop$Chromosome[i]
+      
+      # Extract genomic position
+      pos <- Stop$POS[i]
+      
+      # Extract read depth from VCF INFO field
+      depth <- as.numeric(
+        str_split(str_split(Stop$`Donor0958_OR7A10Stop`[i], ":")[[1]][2], ",")[[1]][2]
+      )
+      
+      # Print chromosome for progress tracking
+      print(chr)
+      
+      # Increment count for matching genomic bin
+      Stop_seg[chromosome == chr & start < pos & end > pos, "count"] <-
+        Stop_seg[chromosome == chr & start < pos & end > pos, "count"] + 1
+    }
+
+    ############################
+    # Structural variant processing
+    ############################
+
+    # Load structural variant annotation utilities
+    library(StructuralVariantAnnotation)
+
+    # Read OE structural variant VCF
+    OE_SV <- VariantAnnotation::readVcf(
+      "WGS_Data/Donor0958_OR7A10OE_Unique_SV1000.vcf"
+      )
+
+    # Read Stop structural variant VCF
+    Stop_SV <- VariantAnnotation::readVcf(
+      "WGS_Data/Donor0958_OR7A10Stop_Unique_SV1000.vcf"
+      )
+
+    # Extract OE breakpoint ranges
+    OE_bpgr <- breakpointRanges(OE_SV)
+
+    # Convert OE breakpoints to BEDPE format
+    OE_bedpe <- breakpointgr2bedpe(OE_bpgr)
+
+    # Filter out short-distance intra-chromosomal breakpoints
+    OE_bedpe_filter <- OE_bedpe %>%
+      filter(!((abs(start2 - start1) < 50) & (chrom1 == chrom2))) %>%
+      select(chrom1, start1, end1, chrom2, start2, end2)
+
+    # Extract Stop breakpoint ranges
+    Stop_bpgr <- breakpointRanges(Stop_SV)
+
+    # Convert Stop breakpoints to BEDPE format
+    Stop_bedpe <- breakpointgr2bedpe(Stop_bpgr)
+
+    # Filter out short-distance intra-chromosomal breakpoints
+    Stop_bedpe_filter <- Stop_bedpe %>%
+      filter(!((abs(start2 - start1) < 50) & (chrom1 == chrom2))) %>%
+      select(chrom1, start1, end1, chrom2, start2, end2)
+
+    ############################
+    # Prepare cytoband data for Circos
+    ############################
+
+    # Load RCircos plotting utilities
+    library(RCircos)
+
+    # Read GRCh38 cytoband ideogram
+    GRCh38 <- fread("WGS_Data/GRCh38_cytoBandIdeogram.txt") %>%
+      rename(
+        Chromosome = "#chrom",
+        ChromStart = "chromStart",
+        ChromEnd   = "chromEnd",
+        Band       = "name",
+        Stain      = "gieStain"
+      ) %>%
+      slice(1:864) %>%
+      filter(Chromosome != "chrM")
+
+    # Preserve X and Y chromosome ordering
+    chrX_Y <- GRCh38 %>% filter(Chromosome %in% c("chrX", "chrY"))
+
+    # Reassemble chromosome order
+    GRCh38 <- GRCh38 %>%
+      filter(!Chromosome %in% c("chrX", "chrY", "chrUn_GL000195v1")) %>%
+      bind_rows(chrX_Y) %>%
+      mutate(Chromosome = as.factor(Chromosome))
+
+    # Normalize staining to gneg for plotting
+    GRCh38_final <- GRCh38 %>% mutate(Stain = "gneg")
+
+    ############################
+    # Initialize RCircos parameters
+    ############################
+
+    # Define chromosome exclusion
+    chr.exclude <- NULL
+
+    # Assign cytoband information
+    cyto.info <- GRCh38_final
+
+    # Set number of tracks inside chromosome ideogram
+    tracks.inside <- 2
+
+    # Set number of tracks outside chromosome ideogram
+    tracks.outside <- 0
+
+    # Initialize RCircos core components
+    RCircos.Set.Core.Components(cyto.info, chr.exclude, tracks.inside, tracks.outside)
+
+    # Retrieve plotting parameters
+    rcircos.params <- RCircos.Get.Plot.Parameters()
+
+    # Customize plotting aesthetics
+    rcircos.params$track.background <- "wheat"
+    rcircos.params$text.size <- 4
+    rcircos.params$track.height <- 0.1
+    rcircos.params$chrom.width <- 0.1
+
+    # Apply updated plotting parameters
+    RCircos.Reset.Plot.Parameters(rcircos.params)
+
+    ############################
+    # Generate Circos plot for OE
+    ############################
+
+    # Define output file name
+    out.file <- "CircosPlot_Donor0958_OR7A10OE.pdf"
+
+    # Open PDF graphics device
+    pdf(file = out.file, height = 10, width = 10, compress = TRUE)
+
+    # Initialize plotting area
+    RCircos.Set.Plot.Area()
+
+    # Plot chromosome ideogram
+    RCircos.Chromosome.Ideogram.Plot()
+
+    # Update histogram background color
+    rcircos.params$track.background <- "lightblue"
+
+    # Apply updated plotting parameters
+    RCircos.Reset.Plot.Parameters(rcircos.params)
+
+    # Plot indel histogram
+    RCircos.Histogram.Plot(OE_seg, data.col = 4, track.num = 1, side = "in")
+
+    # Plot structural variant links
+    RCircos.Link.Plot(OE_bedpe_filter, track.num = 2, by.chromosome = TRUE)
+
+    # Close PDF device
+    dev.off()
+
+    ############################
+    # Generate Circos plot for Stop
+    ############################
+
+    # Define output file name
+    out.file <- "CircosPlot_Donor0958_OR7A10Stop.pdf"
+
+    # Open PDF graphics device
+    pdf(file = out.file, height = 10, width = 10, compress = TRUE)
+
+    # Initialize plotting area
+    RCircos.Set.Plot.Area()
+
+    # Plot chromosome ideogram
+    RCircos.Chromosome.Ideogram.Plot()
+
+    # Update histogram background color
+    rcircos.params$track.background <- "grey"
+
+    # Apply updated plotting parameters
+    RCircos.Reset.Plot.Parameters(rcircos.params)
+
+    # Plot indel histogram
+    RCircos.Histogram.Plot(Stop_seg, data.col = 4, track.num = 1, side = "in")
+
+    # Plot structural variant links
+    RCircos.Link.Plot(Stop_bedpe_filter, track.num = 2, by.chromosome = TRUE)
+
+    # Close PDF device
+    dev.off()
