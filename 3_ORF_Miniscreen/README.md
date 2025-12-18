@@ -23,46 +23,57 @@ The pipeline is designed for pooled ORF perturbation screens and supports:
 ---
 
 ## Repository Structure
-
+```text
 .
+├── Data
+│ └─ data_counts_v0.2.txt
+│ └─ data_pca_v0.2.txt
+│ └─ qc_wass_distribution_v0.1.txt
+│ └─ samb_geneResAdj_v0.2.txt
+│ └─ samb_umiRes_v0.2.txt
+│ └─ SampleBarcode_Map.txt
+│
+├── 01_Preprocess_OrfScreen.md
 ├── 01_Preprocess_OrfScreen.Rmd
 │ └── Sample ID mapping, count aggregation, and preprocessing
 │
+├── 02_OrfScreen_QC.md
 ├── 02_OrfScreen_QC.Rmd
 │ └── Quality control, normalization checks, and replicate assessment
 │
+├── 03_OrfScreen_analysis.md
 ├── 03_OrfScreen_analysis.Rmd
 │ └── Differential analysis, hit calling, and visualization
 │
-└── README.md
-
+├── LICENSE
+│
+├── README.md
+│
+└── Samba_official_V1.1.R
+```
 
 ---
 
 ## Workflow Summary
 
 ### 1. ORF Screen Preprocessing  
-**`01_Preprocess_OrfScreen.Rmd`**
+[01_Preprocess_OrfScreen.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/3_ORF_Miniscreen/01_Preprocess_OrfScreen.md)
 
 - Converts raw ORF count files into a unified matrix  
 - Harmonizes sample identifiers across batches  
 - Aggregates ORF-level counts  
 - Outputs analysis-ready count tables  
 
----
-
 ### 2. Quality Control  
-**`02_OrfScreen_QC.Rmd`**
+[02_OrfScreen_QC.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/3_ORF_Miniscreen/02_OrfScreen_QC.md)
 
 - Assesses library complexity and sequencing depth  
 - Identifies low-quality samples and ORFs  
 - Evaluates replicate concordance  
 - Generates diagnostic and QC plots  
 
----
-
 ### 3. ORF Screen Analysis  
-**`03_OrfScreen_analysis.Rmd`**
+[03_OrfScreen_analysis.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/3_ORF_Miniscreen/03_OrfScreen_analysis.md)
 
 - Performs differential ORF enrichment/depletion analysis  
 - Identifies statistically significant ORF hits  
@@ -121,4 +132,3 @@ This project is released under the **MIT License**. See the `LICENSE` file for d
 For questions or collaboration:
 - **Name:** Paul Renauer 
 - **Email:** paul.renauer@yale.edu
-

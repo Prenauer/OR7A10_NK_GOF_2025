@@ -1,4 +1,4 @@
-# ORF Screen Analysis Pipeline
+# CRISPRa Screen Analysis Pipeline
 
 ![Language](https://img.shields.io/badge/language-R-blue)
 ![Workflow](https://img.shields.io/badge/workflow-R%20Markdown-informational)
@@ -10,80 +10,82 @@
 
 ## Overview
 
-This repository contains the complete analysis pipeline for **ORF (Open Reading Frame) screening experiments**, including preprocessing, quality control, and downstream statistical analysis. The workflow is implemented in **R Markdown** to ensure transparency, reproducibility, and ease of extension.
+This repository contains the analysis workflow for a **CRISPRa (CRISPR activation) pooled screening experiment**, implemented in **R Markdown** for transparency and reproducibility.
 
-The pipeline is designed for pooled ORF perturbation screens and supports:
+The attached script (**`01_CRISPRa_ScreenAnalysis.Rmd`**) performs end-to-end analysis using a **SAMBA-based pipeline**, including:
 
-- Barcode and sample ID harmonization  
-- Read count aggregation and normalization  
-- Quality control diagnostics  
-- Hit identification and statistical testing  
-- Visualization of ORF-level effects  
+- Input ingestion and preprocessing into a screen-aware object  
+- Guide-level differential analysis (sgRNA statistics)  
+- Gene-level aggregation and hit calling  
+- Generation of ranked hit plots (gene score vs adjusted significance)  
+- Export of gene-level results and publication-ready figures  
 
 ---
 
 ## Repository Structure
 
+```text
 .
-├── 01_Preprocess_OrfScreen.Rmd
-│ └── Sample ID mapping, count aggregation, and preprocessing
+├── Data
+│   └─ NK_Screen_LY3_CountTable.txt
+│   └─ NK_Screen_LY3_GeneLevelResults.txt
+│   └─ NK_Screen_LY3_GuideLevelResults.txt
+│   └─ NK_Screen_LY3_lcpm.txt
+│   └─ NK_Screen_LY3_mds_plotdata.txt
 │
-├── 02_OrfScreen_QC.Rmd
-│ └── Quality control, normalization checks, and replicate assessment
+├── 01_CRISPRa_ScreenAnalysis.md
+├── 01_CRISPRa_ScreenAnalysis.Rmd
+│   └─── CRISPRa screen preprocessing, guide/gene analysis, and rank-plot visualization
 │
-├── 03_OrfScreen_analysis.Rmd
-│ └── Differential analysis, hit calling, and visualization
+├── LICENSE
 │
-└── README.md
-
+├── README.md
+│
+└── Samba_official_V1.1.R
+```
 
 ---
 
 ## Workflow Summary
 
-### 1. ORF Screen Preprocessing  
-**`01_Preprocess_OrfScreen.Rmd`**
+### 1. Environment Setup and Inputs
+[01_Preprocess_OrfScreen.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/3_ORF_Miniscreen/01_Preprocess_OrfScreen.md)
+- Loads required R packages and analysis utilities
+- Reads in CRISPRa screen count/design inputs
+- Defines the experimental design used for differential testing
 
-- Converts raw ORF count files into a unified matrix  
-- Harmonizes sample identifiers across batches  
-- Aggregates ORF-level counts  
-- Outputs analysis-ready count tables  
+### 2. Screen Preprocessing (SAMBA)
+- Converts raw sgRNA counts into an analysis-ready object via Preprocess_Samba()
+- Encodes design information needed for downstream modeling
 
----
+### 3. Differential Analysis and Hit Calling
+- Performs guide-level testing using Analyze_Samba_Guides()
+- Aggregates sgRNA evidence into gene-level statistics using Analyze_Samba_Genes()
+- Writes gene-level outputs to disk (e.g., *_GeneLevelResults.txt)
 
-### 2. Quality Control  
-**`02_OrfScreen_QC.Rmd`**
-
-- Assesses library complexity and sequencing depth  
-- Identifies low-quality samples and ORFs  
-- Evaluates replicate concordance  
-- Generates diagnostic and QC plots  
-
----
-
-### 3. ORF Screen Analysis  
-**`03_OrfScreen_analysis.Rmd`**
-
-- Performs differential ORF enrichment/depletion analysis  
-- Identifies statistically significant ORF hits  
-- Generates volcano plots and summary visualizations  
-- Exports ranked ORF-level results  
+### 4. Visualization and Output
+- Constructs a ranked plot (gene score / z-score vs -log10(FDR) or analogous adjusted metric)
+- Overlays null distributions and thresholds where applicable
+- Saves publication-quality plots (e.g., NK_Screen_LY_volcano.pdf)
 
 ---
 
 ## Requirements
 
-- **R ≥ 4.2**
+- R ≥ 4.2
 - Key R packages (non-exhaustive):
-  - `tidyverse`
-  - `data.table`
-  - `BiocParallel`
-  - `ggplot2`
-  - `cowplot`
-  - `rstatix`
-  - `reshape2`
+   - tidyverse, dplyr, data.table
+   - ggplot2
+   - ggrastr
+   - ggpointdensity
+   - viridis
+   - cowplot
+- SAMBA pipeline functions referenced in the script:
+   - Preprocess_Samba()
+   - Analyze_Samba_Guides()
+   - Analyze_Samba_Genes()
 
-Exact package versions and parameters are documented within each R Markdown file.
+*Exact parameters, thresholds, and output filenames are defined inside the R Markdown file.
 
 ---
 
