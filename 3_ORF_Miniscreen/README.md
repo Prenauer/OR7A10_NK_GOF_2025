@@ -25,16 +25,31 @@ The pipeline is designed for pooled ORF perturbation screens and supports:
 ## Repository Structure
 ```text
 .
+├── Data
+│ └─ data_counts_v0.2.txt
+│ └─ data_pca_v0.2.txt
+│ └─ qc_wass_distribution_v0.1.txt
+│ └─ samb_geneResAdj_v0.2.txt
+│ └─ samb_umiRes_v0.2.txt
+│ └─ SampleBarcode_Map.txt
+│
+├── 01_Preprocess_OrfScreen.md
 ├── 01_Preprocess_OrfScreen.Rmd
 │ └── Sample ID mapping, count aggregation, and preprocessing
 │
+├── 02_OrfScreen_QC.md
 ├── 02_OrfScreen_QC.Rmd
 │ └── Quality control, normalization checks, and replicate assessment
 │
+├── 03_OrfScreen_analysis.md
 ├── 03_OrfScreen_analysis.Rmd
 │ └── Differential analysis, hit calling, and visualization
 │
-└── README.md
+├── LICENSE
+│
+├── README.md
+│
+└── Samba_official_V1.1.R
 ```
 
 ---
