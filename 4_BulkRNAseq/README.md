@@ -24,16 +24,10 @@ These scripts analyze transcriptional changes associated with:
 
 ---
 
-## Scripts
+## Workflow Summary
 
-### `NKGOF_RNAseq_analysis_DESeq2_Git.R`
-
-############################
-## Differential expression analysis with DESeq2
-############################
-
-This script performs end-to-end RNA-seq analysis, including:
-
+### 1. Differential expression analysis
+[01_RNAseq_analysis.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/4_BulkRNAseq/01_RNAseq_analysis.md)
 - Import of raw count matrices
 - Filtering of low-expression genes
 - Construction of sample metadata
@@ -59,15 +53,8 @@ This script performs end-to-end RNA-seq analysis, including:
 
 ---
 
-### `Pathway_analysis_Git.R`
-
-############################
-## Gene set enrichment and pathway analysis
-############################
-
-This script performs **GO Biological Process enrichment** using ranked DESeq2 results.
-
-Main steps include:
+### 2. Gene set enrichment and pathway analysis
+[02_Pathway_analysis.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/4_BulkRNAseq/02_Pathway_analysis.md)
 
 - Import of curated DEG tables
 - Construction of ranked gene lists by log2 fold change
