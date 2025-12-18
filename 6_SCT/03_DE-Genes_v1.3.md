@@ -1,0 +1,269 @@
+### Load libraries and prepare environment
+
+    ############################
+    ## Set working directory
+    ############################
+
+    setwd('06_SCT')
+
+    ############################
+    ## Load required libraries
+    ############################
+
+    # Common libraries
+    library(dplyr)
+    library(stringr)
+    library(data.table)
+    library(ggplot2)
+    library(ggrepel)
+    library(ggrastr)
+    library(Matrix)
+    library(reticulate)
+    library(Seurat)
+    library(future)
+    # libraries for upset plots
+    library(ggdendroplot)
+    library(ggvenn)
+    library(ggVennDiagram)
+
+    ## Source file with accessory functions
+    source('00_Additional_Functions.R')
+
+    ############################
+    ## Set options
+    ############################
+
+    options(future.globals.maxSize= 10000*1024^2)
+    options(matrixStats.useNames.NA = 'deprecated')
+    options("ggrastr.default.dpi" = 750)
+
+    ############################
+    ## Load data
+    ############################
+
+    so <- readRDS('Datasets/so_proc2.rds')
+
+### DE analysis of genes
+
+    ############################
+    ## Select genes to include in differential expression analysis
+    ############################
+
+    ## Identify genes excluding histone, ribosomal, uncharacterized, and lincRNA genes
+    genes2use <- grep(
+      '^HIST|^AC([0-9])|^AL([0-9])|^AP([0-9])|^AF([0-9])|^CU([0-9])|^RPL([0-9])|^RPS([0-9])|^LINC|orf',
+      rownames(so),
+      invert = TRUE,
+      value = TRUE
+    )
+
+
+    ############################
+    ## Perform DE analysis for each NK cell subset
+    ############################
+
+    ## Define unique cell type groups
+    groups <- sort(unique(so$ct))
+
+    ## Run differential expression per cell type
+    de <- do.call(
+      rbind,
+      lapply(groups, function(celltype){
+
+        ## Run DE comparison between genotypes within a cell type
+        de <- FindMarkers(
+          subset(so, subset = (ct == celltype)),
+          group.by = 'sample',
+          logfc.threshold = 0,
+          densify = TRUE,
+          features = genes2use,
+          ident.1 = 'OR7A10_Tumor',
+          ident.2 = 'OR7A10st_Tumor'
+        )
+
+        ## Standardize column names
+        colnames(de) <- c('pval','logFC','pct.1','pct.2','padj')
+
+        ## Add metadata columns to DE results
+        de <- data.frame(
+          celltype = celltype,
+          feature = rownames(de),
+          comp = 'OR7A10_Tumor-OR7A10st_Tumor',
+          group1 = 'OR7A10_Tumor',
+          group2 = 'OR7A10st_Tumor',
+          de
+        )
+
+        ## Order results by significance and effect size
+        de <- de[with(de, order(-log10(pval), abs(logFC), decreasing = TRUE)),]
+
+        ## Return DE table for this cell type
+        return(de)
+      })
+    )
+
+    ## Write combined DE results to file
+    write.table(
+      de,
+      'Data/de_genes.txt',
+      sep = '\t',
+      quote = FALSE,
+      row.names = FALSE
+    )
+
+### Make volcano plots
+
+    ############################
+    ## Generate volcano plots for each cell type
+    ############################
+
+    ## Load differential expression results
+    de <- read.delim('Data/de_genes.txt')
+
+    ## Create volcano plot for each cell type
+    plist <- lapply(groups, function(celltype){
+
+      ## Subset DE results for current cell type and plot volcano
+      plotVolcano(
+        de[which(de$celltype == celltype),],
+        pt.size = 0.8,
+        rastr = TRUE,
+        lfc.thresh = 1.5,
+        title = celltype
+      )
+    })
+
+    ## Combine volcano plots into a grid
+    p <- cowplot::plot_grid(
+      plotlist = plist,
+      align = 'hv',
+      axis = 'lbt',
+      ncol = 4,
+      byrow = FALSE
+    )
+
+    ## Save volcano plot figure
+    ggsave(
+      plot = p,
+      'Figures/vol_de_genes.pdf',
+      height = 2.5 * 2,
+      width = 2.5 * 4
+    )
+
+### Make upset plots
+
+    ############################
+    ## Prepare data for upset analysis
+    ############################
+
+    ## Load differential expression results
+    de <- read.delim("Data/de_genes.txt")
+
+    ## Extract unique comparisons
+    comps <- unique(de$comp)
+
+    ## Assign direction of regulation based on log fold change
+    de$dir <- c('up','dn')[1 + as.integer(de$logFC < 0)]
+
+    ## Filter DE genes by significance and effect size
+    de <- de[which(de$padj < 0.01 & abs(de$logFC) > 1.5),]
+
+    ## Construct identifier combining direction and cell type
+    de$id <- paste0(de$dir, ':', de$celltype)
+
+    ## Define universe of genes
+    g <- unique(de$feature)
+
+    ## Construct logical membership matrix for each DE set
+    d <- do.call(
+      cbind,
+      lapply(unique(de$id), function(id){
+        g %in% de$feature[which(de$id == id)]
+      })
+    )
+
+    ## Assign column names to membership matrix
+    colnames(d) <- unique(de$id)
+
+    ## Convert logical matrix to list format for venn/upset plotting
+    d <- ggvenn::data_frame_to_list(data.frame(d))
+
+    ## Clean and format set names
+    names(d) <- str_replace(names(d), 'up.', 'UP:') %>%
+      str_replace(., 'dn.', 'DN:') %>%
+      str_split_i(., '\\.', 1)
+
+
+    ############################
+    ## Generate upset plots
+    ############################
+
+    ## Define color palette by NK subset
+    cols <- structure(
+      ggcolor(8),
+      names = str_split_i(sort(unique(so$ct)), '-', 1)
+    )
+
+    ## Generate upset plots for up- and down-regulated genes
+    plist <- lapply(c('UP','DN'), function(direction){
+
+      ## Build venn object for selected direction
+      v <- Venn(d[grep(direction, names(d))])
+
+      ## Determine number of non-empty intersections
+      n.intersects <- sum(process_region_data(v)$count > 0)
+
+      ## Extract region-level intersection data
+      pr <- process_region_data(v)
+
+      ## Filter to non-empty regions
+      pr <- pr[which(pr$count > 0),]
+
+      ## Order regions by size and identifier
+      pr <- pr[order(-pr$count, pr$id),]
+
+      ## Remove very small intersections
+      pr <- pr[which(nchar(pr$id) > 5),]
+
+      ## Extract gene lists per intersection
+      glist <- lapply(pr$item, function(i) g[i]) %>%
+        structure(., names = pr$id)
+
+      ## Define bar colors by cell type
+      bar.col <- cols[str_split_i(v@names, ':', 2)]
+
+      ## Generate upset plot
+      p <- plot_upset(
+        v,
+        nintersects = n.intersects,
+        sets.bar.color = bar.col,
+        order.set.by = 'name',
+        relative_height = 0.25,
+        sets.bar.x.label = '# DE Genes'
+      )
+
+      ## Wrap upset plot for cowplot compatibility
+      p <- cowplot::ggdraw() +
+        cowplot::draw_grob(aplot::gglistGrob(p))
+
+      ## Return upset plot
+      return(p)
+    })
+
+    ## Combine upset plots vertically
+    p <- cowplot::plot_grid(
+      plotlist = plist,
+      align = 'hv',
+      axis = 'lbt',
+      ncol = 1,
+      rel_widths = c(0.4, 1)
+    )
+
+    ## Save upset plot figure
+    ggsave(
+      plot = p,
+      'Figures/upset_de_genes.pdf',
+      height = 2 * 2,
+      width = 1 * 5,
+      scale = 2.2
+    )
