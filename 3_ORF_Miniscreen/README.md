@@ -49,8 +49,6 @@ The pipeline is designed for pooled ORF perturbation screens and supports:
 - Aggregates ORF-level counts  
 - Outputs analysis-ready count tables  
 
----
-
 ### 2. Quality Control  
 [02_OrfScreen_QC.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/3_ORF_Miniscreen/02_OrfScreen_QC.md)
 
@@ -58,8 +56,6 @@ The pipeline is designed for pooled ORF perturbation screens and supports:
 - Identifies low-quality samples and ORFs  
 - Evaluates replicate concordance  
 - Generates diagnostic and QC plots  
-
----
 
 ### 3. ORF Screen Analysis  
 [03_OrfScreen_analysis.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/3_ORF_Miniscreen/03_OrfScreen_analysis.md)
