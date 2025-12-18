@@ -120,6 +120,6 @@ This project is released under the **MIT License**. See the `LICENSE` file for d
 
 ## ✉️ Contact
 
-For questions or collaboration:
+For questions:
 - **Name:** Paul Renauer 
 - **Email:** paul.renauer@yale.edu
