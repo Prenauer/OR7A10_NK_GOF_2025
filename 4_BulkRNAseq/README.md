@@ -1,4 +1,4 @@
-# NKGOF Bulk RNA-seq Analysis
+# Bulk RNA-seq Analysis Pipeline
 
 ![R](https://img.shields.io/badge/R-%3E%3D4.1-blue)
 ![DESeq2](https://img.shields.io/badge/DESeq2-RNA--seq-green)
@@ -9,12 +9,12 @@ This directory contains R scripts used for **bulk RNA-seq differential expressio
 
 ---
 
-## Overview of Analysis
+## Overview
 
 The workflow consists of two major components:
 
-1. **Differential expression analysis** using **DESeq2**
-2. **Pathway enrichment analysis** using **GSEA / clusterProfiler**
+1. **Differential expression analysis** 
+2. **Pathway enrichment analysis** 
 
 These scripts analyze transcriptional changes associated with:
 - OR7A10 vs OR7A10Stop
@@ -22,6 +22,35 @@ These scripts analyze transcriptional changes associated with:
 - Stimulation (24 hr vs 0 hr)
 - Higher-order interactions between CAR, OR7A10 status, and stimulation
 
+---
+
+## Repository Structure
+
+```text
+.
+├── RNAseq_Data
+│ ├─ 20250702_metadata_bulkRNAseq.xlsx
+│ ├─ DEG_stim_24hr_vs_0hr.csv
+│ ├─ DEG_subset_Interaction_OE1OR7A10.CAR1HER2CAR.csv
+│ ├─ DEG_subset_OE_OR7A10_vs_OR7A10Stop.csv
+│ └─ NKGOF_RNAseq_Count_Matrix.txt
+│
+├── 01_RNAseq_analysis.md
+├── 01_RNAseq_analysis.Rmd
+│ └── DE analysis, QC, and plotting
+│
+├── 02_Pathway_analysis.md
+├── 02_Pathway_analysis.Rmd
+│ └── Pathway analysis, plotting
+│
+├── 03_OrfScreen_analysis.md
+├── 03_OrfScreen_analysis.Rmd
+│ └── Differential analysis, hit calling, and visualization
+│
+├── LICENSE
+│
+└── README.md
+ ```
 ---
 
 ## Workflow Summary
@@ -51,8 +80,6 @@ These scripts analyze transcriptional changes associated with:
 - Interaction plots
 - DEG tables (`.csv`)
 
----
-
 ### 2. Gene set enrichment and pathway analysis
 [02_Pathway_analysis.Rmd](https://github.com/Prenauer/OR7A10_NK_GOF_2025/blob/main/4_BulkRNAseq/02_Pathway_analysis.md)
 
@@ -72,7 +99,7 @@ Analyses performed for:
 
 ---
 
-## Software Requirements
+## Requirements
 
 - R (≥ 4.1)
 - Bioconductor packages:
@@ -94,7 +121,7 @@ Analyses performed for:
 
 ---
 
-## Reproducibility Notes
+## Reproducibility
 
 - Scripts assume gene symbols as rownames
 - Factor reference levels are explicitly set before DE testing
@@ -127,7 +154,7 @@ This project is released under the **MIT License**. See the `LICENSE` file for d
 
 ## ✉️ Contact
 
-For questions or collaboration:
+For questions:
 - **Name:** Kaiyuan Tang
 - **Email:** kaiyuan.tang@yale.edu
 
